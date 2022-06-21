@@ -135,7 +135,7 @@ int writen(int fd, void *buf, size_t size) {
 
 int sendInteger(int fd_sk, size_t n) {
     if (writen(fd_sk, &n, sizeof(unsigned long)) == -1) {
-        fprintf(stderr, "An error occurred on sending msg lenght\n");
+        fprintf(stderr, "An error occurred while sending msg lenght\n");
         return errno;
     }
 
@@ -145,7 +145,7 @@ int sendInteger(int fd_sk, size_t n) {
 size_t receiveInteger(int fd_sk) {
     size_t n=0;
     if(readn(fd_sk, &n, sizeof(unsigned long)) == -1){
-        fprintf(stderr, "An error occurred reading msg lenght\n");
+        fprintf(stderr, "An error occurred while reading msg lenght\n");
         return errno;
     }
 

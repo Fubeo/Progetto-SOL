@@ -7,7 +7,7 @@
 list *list_create() {
     list* l = malloc(sizeof(list));
     if(l==NULL){
-        fprintf(stderr, "Impossibile creare una lista, malloc error\n");
+        fprintf(stderr, "Unable to create a list, malloc error\n");
         exit(errno);
     }
     l->head = NULL;

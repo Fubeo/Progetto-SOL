@@ -30,12 +30,11 @@ int main(int argc, char *argv[])
   int rc = client_unix_connect(sd, SERVER_PATH);
 
   // client - server
-  char *buffer = "Ho bisogno di Informazioni";
-  sendStr(sd, buffer);
+  sendStr(sd, argv[1]);
 
   char *msg;
   msg = receiveStr(sd);
-  fprintf(stdout, "Messaggio ricevuto: %s\n", msg);
+  fprintf(stdout, "Server: %s\n", msg);
 
   /***********************************************************************/
   /* Close down any open socket descriptors                              */

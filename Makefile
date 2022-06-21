@@ -7,8 +7,10 @@ CLIENT_OUT 		= ./out/client
 FLAGS					= -std=c99 -Wall
 .DEFAULT_GOAL := all
 
-server_lib = 	./lib/src/customsocket.c	\
-							./lib/src/customlist.c		\
+server_lib = 	./lib/src/customsocket.c			\
+							./lib/src/customlist.c				\
+							./lib/src/customsortedlist.c	\
+							./lib/src/customqueue.c				\
 							./lib/src/customstring.c
 
 client_lib = 	./lib/src/customsocket.c
@@ -27,7 +29,7 @@ all: 		server client
 
 test1: server client
 	clear
-	valgrind --leak-check=full $(SERVER_OUT) &
+	valgrind --leak-check=full --show-leak-kinds=all $(SERVER_OUT) &
 	sh script/test1.sh
 	@killall -TERM -w memcheck-amd64-
 	@printf "\ntest1 terminato\n"
