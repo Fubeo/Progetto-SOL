@@ -11,7 +11,10 @@ server_lib = 	./lib/src/customsocket.c			\
 							./lib/src/customlist.c				\
 							./lib/src/customsortedlist.c	\
 							./lib/src/customqueue.c				\
-							./lib/src/customstring.c
+							./lib/src/customstring.c			\
+							./lib/src/customconfig.c			\
+							./lib/src/customfile.c				\
+							./lib/src/customprint.c
 
 client_lib = 	./lib/src/customsocket.c
 
@@ -32,4 +35,16 @@ test1: server client
 	valgrind --leak-check=full --show-leak-kinds=all $(SERVER_OUT) &
 	sh script/test1.sh
 	@killall -TERM -w memcheck-amd64-
-	@printf "\ntest1 terminato\n"
+	@printf "\nTest1 terminated\n"
+
+testserver: server
+		clear
+		valgrind --leak-check=full --show-leak-kinds=all $(SERVER_OUT)
+		#@killall -TERM -w memcheck-amd64-
+		@printf "\nTestserver terminated\n"
+
+testclient: client
+		clear
+		sh script/test1.sh
+		#@killall -TERM -w memcheck-amd64-
+		@printf "\nTestclient terminated\n"

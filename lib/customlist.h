@@ -21,4 +21,4 @@ node* list_getNode(list* l, char* key);
 void list_insert(list **l, char* key, void *value);
 void list_destroy(list** l, void (*delete_value)(void* value));
 bool list_containsKey(list* l, char* key);
-#endif //CUSTOM_LIST_H
+#endif

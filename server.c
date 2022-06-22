@@ -1,24 +1,18 @@
-/**************************************************************************/
-/* This example program provides code for a server application that uses     */
-/* AF_UNIX address family                                                 */
-/**************************************************************************/
-
-/**************************************************************************/
-/* Header files needed for this sample program                            */
-/**************************************************************************/
 #include <stdio.h>
 #include <string.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <pthread.h>
+#include <signal.h>
 #include "./lib/customsocket.h"
 #include "./lib/customqueue.h"
+#include "./lib/customconfig.h"
 
+#define CONFIG "./config/test1.ini"
 
-// DEVONO ESSERE SOSTITUITI CON CONTENUTO FILE CONFIG
-#define N_WORKERS 8
-#define SERVER_PATH     "./socket/serversock"
+// Configurazione server
+settings config = DEFAULT_SETTINGS;
 
 // Strutture necessarie per master-workers
 queue *q;
@@ -29,60 +23,44 @@ int pipe_fd[2];
 int server_running = 5;
 int soft_close = 0;
 
-void *worker_function(){
+// Funzioni
 
-  // appena e' disponibile, estrai un client dalla coda
-  int fd_sk_client = queue_get(&q);
-
-  char *buffer;
-  buffer = receiveStr(fd_sk_client);
-
-  fprintf(stdout, "Thread: %d, Client: %s\n", pthread_self(), buffer);
-
-  if(fd_sk_client == 4)sleep(1);
-
-  char msg[100] = "Bel nome ";
-  strcat(msg, buffer);
-  sendStr(fd_sk_client, msg);
-
-  if (fd_sk_client != -1)
-    close(fd_sk_client);
-
-}
+void init_server(char *config_path);
+void *worker_function();
 
 int main() {
   // Dichiarazione socket
-  int    fd_sk_server = -1, fd_sk_client = -1;
+  int fd_sk_server = -1, fd_sk_client = -1;
 
-  //char   buffer[BUFFER_LENGTH];
-  struct sockaddr_un serveraddr;
+  init_server(CONFIG);
 
   // socket()
-  fd_sk_server = server_unix_socket(SERVER_PATH);
+  fd_sk_server = server_unix_socket(config.SOCK_PATH);
 
   // bind() e listen()
-  server_unix_bind(fd_sk_server, SERVER_PATH);
+  server_unix_bind(fd_sk_server, config.SOCK_PATH);
   printf("Ready for client connect().\n");
 
-  // creazione coda di client
-  q = queue_create();
 
   // creazione e inizializzazione thread pool
   pthread_t tid = 0;
-  pthread_t thread_pool[N_WORKERS];
+  pthread_t thread_pool[config.N_WORKERS];
 
   fprintf(stdout, "Thread pool: [ ");
 
-  for (int i = 0; i < N_WORKERS; i++) {
+  for (int i = 0; i < config.N_WORKERS; i++) {
       pthread_create(&tid, NULL, &worker_function, NULL);
       thread_pool[i] = tid;
-      fprintf(stdout, "%d ", tid);
+      sleep(1);
+      fprintf(stdout, "%ld ", tid);
   }
 
   fprintf(stdout, "]\n");
 
   while(server_running--){
-    printf("%d\n", server_running);
+    //printf("%d\n", server_running);
+
+
     // accept()
     fd_sk_client = server_unix_accept(fd_sk_server);
 
@@ -103,16 +81,51 @@ int main() {
       server_running = 0;
     }
   }
+  sleep(1);
+  queue_close(&q);
 
-
-
-  for (int i = 0; i < N_WORKERS; i++) {
-      fprintf(stdout, "Sto aspettando %d\n", thread_pool[i]);
+  for (int i = config.N_WORKERS-1; i >-1; i--) {
+      fprintf(stdout, "Sto aspettando %ld\n", thread_pool[i]);
       pthread_join(thread_pool[i], NULL);
-      fprintf(stdout, "Ho aspettato %d\n", thread_pool[i]);
+      fprintf(stdout, "Ho aspettato %ld\n", thread_pool[i]);
   }
 
   // chiudo il socket del server
   if (fd_sk_server != -1)
     close(fd_sk_server);
+}
+
+void init_server(char *config_path) {
+    //funzione di inizializzazione di tutte le strutture dati, segnali, pipe e variabili globali
+
+    // lettura file config
+    settings_load(&config, config_path);
+
+    fprintf(stdout, "%d, %s\n", config.N_WORKERS, config.SOCK_PATH);
+
+    // creazione coda di client
+    q = queue_create();
+
+}
+
+void *worker_function(){
+  while(1){
+    // appena e' disponibile, estrai un client dalla coda
+    int fd_sk_client = queue_get(&q);
+    if(fd_sk_client == -1) break;   // se non gli viene associato nessun client
+
+    char *buffer;
+    buffer = receiveStr(fd_sk_client);
+
+    fprintf(stdout, "Thread: %ld, Client: %s\n", pthread_self(), buffer);
+
+    //if(fd_sk_client == 4) sleep(1);
+
+    char msg[100] = "Bel nome ";
+    strcat(msg, buffer);
+    sendStr(fd_sk_client, msg);
+
+    if (fd_sk_client != -1) close(fd_sk_client);
+  }
+
 }

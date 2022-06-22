@@ -37,4 +37,4 @@ int sendfile(int fd_sk, const char* pathname);
 void receivefile(int fd_sk, void** buff, size_t* lenght);
 void sendStr(int to, char* msg);
 char* receiveStr(int from);
-#endif /* CUSTOM_SOCKET_H */
+#endif

@@ -21,7 +21,7 @@ elem* n=NULL;
 
 static void insert_head (elem **head, int value) {
     elem *element = (elem *) malloc(sizeof(elem));
-    if(element==NULL){
+    if(element == NULL){
         fprintf(stderr, "Impossibile aggiungere client nella lista\n");
         return;
     }
@@ -36,7 +36,7 @@ static void insert_middle(elem **head, int value)
     elem *curr = *head;
     elem *succ = (*head)->next;
     elem *element = (elem *)malloc(sizeof(elem));
-    if(element==NULL){
+    if(element == NULL){
         fprintf(stderr, "Impossibile aggiungere client nella lista\n");
         return;
     }

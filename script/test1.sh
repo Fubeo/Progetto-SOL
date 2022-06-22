@@ -1,18 +1,25 @@
 sleep 5
 
+k=0
+
 ./out/client Fabio
-PID[0]=$!
+PID[k]=$!
+((k++))
 ./out/client Giada
-PID[1]=$!
+PID[k]=$!
+((k++))
 ./out/client Matteo
-PID[2]=$!
+PID[k]=$!
+((k++))
 ./out/client Giovanna
-PID[3]=$!
+PID[k]=$!
+((k++))
 ./out/client Guido
-PID[4]=$!
+PID[k]=$!
+((k++))
 
-
-
-for((i=0;i<5;++i)); do
+for((i=0;i<k;++i)); do
     wait ${PID[i]}
 done
+
+sleep 1

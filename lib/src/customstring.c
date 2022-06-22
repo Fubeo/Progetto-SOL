@@ -13,7 +13,7 @@
 #define NUMB_OF_STR(x) (x*sizeof(char*))
 
 char *str_create(const char *s) {
-    if (s == NULL || str_isEmpty(s)) {
+    if (s == NULL || str_is_empty(s)) {
         char *empty_s = malloc(sizeof(char));
         if(empty_s==NULL){
             fprintf(stderr, "str_create() malloc error\n");
@@ -31,7 +31,7 @@ int str_toInteger(int* output, char* s){
     char* rem;
     s = str_clean(s);
     int converted_s= (int) strtol(s,&rem,10);
-    if(!str_isEmpty(rem)){
+    if(!str_is_empty(rem)){
         return -1;
     }
     *output=converted_s;
@@ -173,7 +173,7 @@ int str_splitn(char ***output, const char *s, const char *delimiter, int n) {
     return i;
 }
 
-int str_startsWith(const char *s, const char *prefix) {
+int str_starts_with(const char *s, const char *prefix) {
     if (!s || !prefix)
         return 0;
     int lenstr = str_length(s);
@@ -187,7 +187,7 @@ int str_startsWith(const char *s, const char *prefix) {
     return true;
 }
 
-bool str_endsWith(const char *s, const char *suffix) {
+bool str_ends_with(const char *s, const char *suffix) {
     if (!s || !suffix)
         return false;
 
@@ -202,7 +202,7 @@ bool str_endsWith(const char *s, const char *suffix) {
     return true;
 }
 
-bool str_isEmpty(const char *s) {
+bool str_is_empty(const char *s) {
     return str_length(s) == 0;
 }
 

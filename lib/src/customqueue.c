@@ -7,7 +7,7 @@
 #include <errno.h>
 
 #include "../customqueue.h"
-pthread_mutex_t queue_lock=PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t queue_lock = PTHREAD_MUTEX_INITIALIZER;
 
 queue *queue_create() {
     queue *q = malloc(sizeof(queue));

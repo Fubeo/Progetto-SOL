@@ -2,13 +2,13 @@
 //#include "../file_reader.h"
 
 int server_unix_socket(char *sockpath) {
-    int fd_sk = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (fd_sk == -1) {
+    int fd_sk_server = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (fd_sk_server == -1) {
         fprintf(stderr, "Socket creation error\n");
         return errno;
     }
     unlink(sockpath);
-    return fd_sk;
+    return fd_sk_server;
 }
 
 int server_unix_bind(int fd_sk, char* path){
@@ -55,12 +55,10 @@ int client_unix_socket(){
   /* used for this socket.                                            */
   /********************************************************************/
   sd = socket(AF_UNIX, SOCK_STREAM, 0);
-  if (sd < 0)
-  {
+  if (sd < 0){
      perror("socket() failed");
-     return sd;
   }
-
+  return sd;
 
 }
 
