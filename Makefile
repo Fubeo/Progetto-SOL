@@ -16,7 +16,9 @@ server_lib = 	./lib/src/customsocket.c			\
 							./lib/src/customfile.c				\
 							./lib/src/customprint.c
 
-client_lib = 	./lib/src/customsocket.c
+client_lib = 	./lib/src/customsocket.c			\
+							./lib/src/customprint.c				\
+							./lib/src/customstring.c
 
 
 .SUFFIXES: .c .h
@@ -38,13 +40,13 @@ test1: server client
 	@printf "\nTest1 terminated\n"
 
 testserver: server
-		clear
-		valgrind --leak-check=full --show-leak-kinds=all $(SERVER_OUT)
-		#@killall -TERM -w memcheck-amd64-
-		@printf "\nTestserver terminated\n"
+	clear
+	valgrind --leak-check=full --show-leak-kinds=all $(SERVER_OUT)
+	#@killall -TERM -w memcheck-amd64-
+	@printf "\nTestserver terminated\n"
 
 testclient: client
-		clear
-		sh script/test1.sh
-		#@killall -TERM -w memcheck-amd64-
-		@printf "\nTestclient terminated\n"
+	clear
+	sh script/test1.sh
+	#@killall -TERM -w memcheck-amd64-
+	@printf "\nTestclient terminated\n"

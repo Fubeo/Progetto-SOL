@@ -2,19 +2,19 @@ sleep 5
 
 k=0
 
-./out/client Fabio
+./out/client -ftmp/serversock.sk
 PID[k]=$!
 ((k++))
-./out/client Giada
+./out/client -ftmp/serversock.sk
 PID[k]=$!
 ((k++))
-./out/client Matteo
+./out/client -ftmp/serversock.sk
 PID[k]=$!
 ((k++))
-./out/client Giovanna
+./out/client -ftmp/serversock.sk
 PID[k]=$!
 ((k++))
-./out/client Guido
+./out/client -ftmp/serversock.sk
 PID[k]=$!
 ((k++))
 

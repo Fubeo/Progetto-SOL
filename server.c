@@ -13,15 +13,14 @@
 
 // Configurazione server
 settings config = DEFAULT_SETTINGS;
+int server_running = 5;
+int close_type = 0;   // 0 -> nessuna chiusura, 1 -> SIGINT/SIGQUIT, 2 -> SIGHUP
+
 
 // Strutture necessarie per master-workers
-queue *q;
-
+queue *queue_clients;
 int n_clients = 0;
 
-int pipe_fd[2];
-int server_running = 5;
-int soft_close = 0;
 
 // Funzioni
 
@@ -64,25 +63,25 @@ int main() {
     // accept()
     fd_sk_client = server_unix_accept(fd_sk_server);
 
-    if (soft_close) {   // se e' stata richiesta una soft close
-        printf("Client %d rifiutato\n", fd_sk_client);
+    //if (soft_close) {   // se e' stata richiesta una soft close
+    //    printf("Client %d rifiutato\n", fd_sk_client);
 
-        close(fd_sk_client);
-        break;
-    }
+    //    close(fd_sk_client);
+    //    break;
+    //}
     // se non e' stata richiesta una soft close
 
     printf("Client %d connesso\n", fd_sk_client);
 
     n_clients++;
-    queue_insert(&q, fd_sk_client);
+    queue_insert(&queue_clients, fd_sk_client);
 
-    if (soft_close) {
-      server_running = 0;
-    }
+    //if (soft_close) {
+    //  server_running = 0;
+    //}
   }
   sleep(1);
-  queue_close(&q);
+  queue_close(&queue_clients);
 
   for (int i = config.N_WORKERS-1; i >-1; i--) {
       fprintf(stdout, "Sto aspettando %ld\n", thread_pool[i]);
@@ -96,7 +95,6 @@ int main() {
 }
 
 void init_server(char *config_path) {
-    //funzione di inizializzazione di tutte le strutture dati, segnali, pipe e variabili globali
 
     // lettura file config
     settings_load(&config, config_path);
@@ -104,14 +102,14 @@ void init_server(char *config_path) {
     fprintf(stdout, "%d, %s\n", config.N_WORKERS, config.SOCK_PATH);
 
     // creazione coda di client
-    q = queue_create();
+    queue_clients = queue_create();
 
 }
 
 void *worker_function(){
   while(1){
     // appena e' disponibile, estrai un client dalla coda
-    int fd_sk_client = queue_get(&q);
+    int fd_sk_client = queue_get(&queue_clients);
     if(fd_sk_client == -1) break;   // se non gli viene associato nessun client
 
     char *buffer;
