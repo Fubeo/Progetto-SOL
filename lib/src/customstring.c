@@ -224,13 +224,13 @@ char *str_cut(const char *s, int from, int to) {
     return ret;
 }
 
-void str_removeNewLine(char **s) {
+void str_remove_new_line(char **s) {
     (*s)[strcspn(*s, "\n")] = 0;
 }
 
 char *str_clean(char *s) {
     char *result = str_trim(s);
-    str_removeNewLine(&result);
+    str_remove_new_line(&result);
     return result;
 }
 

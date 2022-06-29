@@ -17,8 +17,8 @@ list *list_create() {
     return l;
 }
 
-void insert_head (node **head, char* key, void *value) {
-    node *element = (node *) malloc(sizeof(node));
+void insert_head (list_node **head, char* key, void *value) {
+    list_node *element = (list_node *) malloc(sizeof(list_node));
     if(element==NULL){
         fprintf(stderr, "list malloc error: impossibile creare un nuovo nodo\n");
         exit(errno);
@@ -30,8 +30,8 @@ void insert_head (node **head, char* key, void *value) {
     *head = element;
 }
 
-void insert_tail (node **tail, char* key, void *value) {
-    node *element = (node *) malloc(sizeof(node));
+void insert_tail (list_node **tail, char* key, void *value) {
+    list_node *element = (list_node *) malloc(sizeof(list_node));
     if(element==NULL){
         fprintf(stderr, "list malloc error: impossibile creare un nuovo nodo\n");
         exit(errno);
@@ -46,10 +46,10 @@ void insert_tail (node **tail, char* key, void *value) {
 
 bool list_remove(list **l, char* key, void (*delete_value)(void* value))
 {
-    node** head=&(*l)->head;
+    list_node** head=&(*l)->head;
 
-    node *curr = *head;
-    node *succ = (*head)->next;
+    list_node *curr = *head;
+    list_node *succ = (*head)->next;
 
     if (str_equals(curr->key, key))
     {
@@ -79,15 +79,15 @@ bool list_remove(list **l, char* key, void (*delete_value)(void* value))
     }
 
     if(curr != NULL && succ == NULL) {
-//        if(str_equals(curr->key, key)) {
-//            free(curr->key);
-//            if(delete_value != NULL)
-//                delete_value(curr->value);
-//            free(curr);
-//            (*l)->length--;
-//
-//            return true;
-//        }
+        if(str_equals(curr->key, key)) {
+            free(curr->key);
+            if(delete_value != NULL)
+                delete_value(curr->value);
+                free(curr);
+                (*l)->length--;
+
+            return true;
+        }
         return false;
     }else if(curr != NULL){
         curr->next = succ->next;
@@ -111,7 +111,7 @@ bool list_isEmpty(list* l){
 
 void list_destroy(list** l, void (*delete_value)(void* value)){
     while((*l)->head != NULL){
-        node* curr=(*l)->head;
+        list_node* curr=(*l)->head;
         free(curr->key);
         if(delete_value != NULL)
             delete_value(curr->value);
@@ -134,9 +134,9 @@ void list_insert(list **l, char* key, void *value) {
     (*l)->length++;
 }
 
-node* list_getNode(list* l, char* key){
-    node* head = l->head;
-    node* tail=l->tail;
+list_node* list_getNode(list* l, char* key){
+    list_node* head = l->head;
+    list_node* tail=l->tail;
     if(head==NULL){
         return NULL;
     }
@@ -162,6 +162,6 @@ int list_getlength(list* l){
     return l->length;
 }
 
-bool list_containsKey(list* l, char* key){
+bool list_contains_key(list* l, char* key){
     return list_getNode(l,key) != NULL;
 }

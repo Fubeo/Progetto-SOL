@@ -13,7 +13,7 @@ int str_starts_with(const char* s, const char* prefix);
 bool str_ends_with(const char* s, const char* suffix);
 bool str_is_empty(const char* s);
 char* str_cut(const char* s, int from, int to);
-void str_removeNewLine(char** s);
+void str_remove_new_line(char** s);
 char* str_clean(char* s);
 char* str_trim(char* s);  // rimuove spazi da s
 char* str_long_toStr(long n);

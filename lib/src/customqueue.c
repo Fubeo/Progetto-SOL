@@ -21,8 +21,8 @@ queue *queue_create() {
     return q;
 }
 
-void queue_insert_head (node **head, int value) {
-    node *element = (node *) malloc(sizeof(node));
+void queue_insert_head (queue_node **head, int value) {
+    queue_node *element = (queue_node *) malloc(sizeof(queue_node));
     if(element==NULL){
         fprintf(stderr, "queue malloc error: impossibile creare un nuovo nodo\n");
         exit(errno);
@@ -33,8 +33,8 @@ void queue_insert_head (node **head, int value) {
     *head = element;
 }
 
-void queue_insert_tail (node **tail, int value) {
-    node *element = (node *) malloc(sizeof(node));
+void queue_insert_tail (queue_node **tail, int value) {
+    queue_node *element = (queue_node *) malloc(sizeof(queue_node));
     if(element==NULL){
         fprintf(stderr, "queue malloc error: impossibile creare un nuovo nodo\n");
         exit(errno);
@@ -66,13 +66,13 @@ int queue_get(queue **q) {
         return -1;
     }
 
-    node *curr = (*q)->head;
+    queue_node *curr = (*q)->head;
     if(curr == NULL){
         pthread_mutex_unlock(&queue_lock);
         return -1;
     }
 
-    node *succ = (*q)->head->next;
+    queue_node *succ = (*q)->head->next;
 
     if (succ == NULL) {
         int r=curr->value;
@@ -111,7 +111,7 @@ void queue_insert(queue **q, int value) {
 
 void queue_destroy(queue **q){
     while (!queue_isEmpty((*q))){
-        int c=queue_get(q);
+        int c = queue_get(q);
         close(c);
     }
 

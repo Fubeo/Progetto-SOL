@@ -2,14 +2,14 @@
 #ifndef CUSTOM_QUEUE_H
 #define CUSTOM_QUEUE_H
 
-typedef struct node{
+typedef struct queue_node{
     int value;
-    struct node *next;
-} node;
+    struct queue_node *next;
+} queue_node;
 
 typedef struct queue {
-    node *head;
-    node *tail;
+    queue_node *head;
+    queue_node *tail;
 } queue;
 
 queue *queue_create();

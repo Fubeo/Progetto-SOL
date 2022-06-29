@@ -1,3 +1,6 @@
+#ifndef CUSTOM_SORTED_LIST_H
+#define CUSTOM_SORTED_LIST_H
+
 typedef struct elem{
     int value;
     struct elem *next;
@@ -9,8 +12,6 @@ typedef struct {
     int size;
 } sorted_list;
 
-#ifndef CUSTOM_SORTED_LIST_H
-#define CUSTOM_SORTED_LIST_H
 sorted_list *sortedlist_create();
 bool sortedlist_remove(sorted_list **l, int value);
 bool sortedlist_isEmpty(sorted_list* l);

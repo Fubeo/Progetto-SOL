@@ -12,25 +12,28 @@ char* file_readline(FILE* file){
     static char* line;
     static size_t len;
 
-    int read_lines=(int) getline(&line,&len,file);
+    int read_lines = (int) getline(&line,&len,file);
     if(read_lines == -1){
         return NULL;
     }
 
-    str_removeNewLine(&line);
+    str_remove_new_line(&line);
     char* ret=str_create(line);
     return ret;
 }
 
-void* file_readAll(FILE* file){
-    size_t file_size=file_getsize(file);
+void *file_read_all(FILE* file){
+    size_t file_size = file_getsize(file);
 
     void* buffer= malloc(sizeof(char) * file_size);
-    if(buffer==NULL){
-        fprintf(stderr, "Impossibile allocare spazio: file_readALL() malloc error\n");
+    fprintf(stdout, "file size: %d\n", file_size);
+
+    if(buffer == NULL){
+        fprintf(stderr, "Impossibile allocare spazio: file_read_all() malloc error\n");
         return NULL;
     }
     fread(buffer, sizeof(char), file_size, file);
+    fprintf(stdout, "file: %d\n", buffer);
 
     return buffer;
 }

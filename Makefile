@@ -4,7 +4,7 @@ INCLUDES   		= -I./lib/*.h
 LIBS       		= -lpthread
 SERVER_OUT 		= ./out/server
 CLIENT_OUT 		= ./out/client
-FLAGS					= -std=c99 -Wall
+FLAGS					= -Wall #-std=c99
 .DEFAULT_GOAL := all
 
 server_lib = 	./lib/src/customsocket.c			\
@@ -14,11 +14,14 @@ server_lib = 	./lib/src/customsocket.c			\
 							./lib/src/customstring.c			\
 							./lib/src/customconfig.c			\
 							./lib/src/customfile.c				\
-							./lib/src/customprint.c
+							./lib/src/customprint.c				\
+							./lib/src/customhashtable.c	
 
 client_lib = 	./lib/src/customsocket.c			\
 							./lib/src/customprint.c				\
-							./lib/src/customstring.c
+							./lib/src/customstring.c			\
+							./lib/src/customfile.c				\
+							./lib/src/customlist.c
 
 
 .SUFFIXES: .c .h
@@ -47,6 +50,6 @@ testserver: server
 
 testclient: client
 	clear
-	sh script/test1.sh
+	sh script/testclient.sh
 	#@killall -TERM -w memcheck-amd64-
 	@printf "\nTestclient terminated\n"

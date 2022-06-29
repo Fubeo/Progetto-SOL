@@ -45,13 +45,34 @@ void pcolor(enum Color c, char* s, ...){
 
 
 void psucc(char *s, ...) {
-    pcolor(GREEN, s);
+  va_list argp;
+  va_start(argp, s);
+  char* p;
+  p = str_concat(GRN,s);
+  vprintf(p, argp);
+  va_end(argp);
+  free(p);
+  printf(RESET);
 }
 
 void pwarn(char* s,...){
-    pcolor(YELLOW, s);
+  va_list argp;
+  va_start(argp, s);
+  char* p;
+  p = str_concat(YEL,s);
+  vprintf(p, argp);
+  va_end(argp);
+  free(p);
+  printf(RESET);
 }
 
 void perr(char* s,...){
-    pcolor(RED, s);
+  va_list argp;
+  va_start(argp, s);
+  char* p;
+  p = str_concat(RD,s);
+  vprintf(p, argp);
+  va_end(argp);
+  free(p);
+  printf(RESET);
 }

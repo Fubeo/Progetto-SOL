@@ -2,19 +2,7 @@ sleep 5
 
 k=0
 
-./out/client -ftmp/serversock.sk
-PID[k]=$!
-((k++))
-./out/client -ftmp/serversock.sk
-PID[k]=$!
-((k++))
-./out/client -ftmp/serversock.sk
-PID[k]=$!
-((k++))
-./out/client -ftmp/serversock.sk
-PID[k]=$!
-((k++))
-./out/client -ftmp/serversock.sk
+./out/client
 PID[k]=$!
 ((k++))
 
