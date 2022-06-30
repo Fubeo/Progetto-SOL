@@ -1,4 +1,5 @@
 #include "../customsocket.h"
+#include "../customfile.h"
 
 int server_unix_socket(char *sockpath) {
     int fd_sk_server = socket(AF_UNIX, SOCK_STREAM, 0);
@@ -96,8 +97,8 @@ size_t readn(int fd, void *buf, size_t size) {
     size_t left = size;
     int r;
     void* bufptr = buf;
-    while(left>0) {
-        if ((r=(int) read(fd ,bufptr,left)) == -1) {
+    while(left > 0) {
+        if ((r = (int) read(fd, bufptr, left)) == -1) {
             if (errno == EINTR) continue;
             return -1;
         }
@@ -169,64 +170,44 @@ int sendn(int fd_sk, void* msg, size_t lenght){
 
 
 int sendfile(int fd_sk, const char* pathname){
-    char pth[1000];
-    strcpy(pth, pathname);
 
-    FILE* file= fopen(pth,"rb");
-    if(file==NULL){
+    FILE* file = fopen(pathname,"rb");
+    if(file == NULL){
         return -1;
     }
 
-    //endInteger(fd_sk, 1);  //PROVA
+    size_t file_size = file_getsize(file);
 
-    size_t fsize = file_getsize(file);
-
-    fprintf(stdout, "fsize = %ld \n", fsize);
-
-    if(sendInteger(fd_sk,fsize)!=0){
+    if(sendInteger(fd_sk,file_size)!=0){
         fprintf(stderr, "An error occurred on sending file size\n");
         return errno;
     }
 
-    //void* fcontent = file_read_all(file);         // legge il contenuto del file
-
-
-    // FILE_READ_ALL
-    size_t file_size = file_getsize(file);
-
-    void* buffer= malloc(sizeof(char) * file_size);
-    if(buffer == NULL){
-        fprintf(stderr, "Impossibile allocare spazio: file_read_all() malloc error\n");
-        return NULL;
-    }
-    fread(buffer, sizeof(char), file_size, file);
-
-    void* fcontent = buffer;
-
-    fprintf(stdout, "%s\n", fcontent);
-
-    if(fcontent == NULL){
+    // LETTURA DEL FILE
+    void* file_content = file_read_all(file);
+    if(file_content == NULL){
         fclose(file);
         return -1;
     }
 
-
-    if(writen(fd_sk, fcontent, fsize) == -1){
+    if(writen(fd_sk, file_content, file_size) == -1){
         fprintf(stderr, "An error occurred on sending file\n");
         exit(errno);
     }
+    fprintf(stdout, "file_content:\n%s\n", file_content);
 
-    free(fcontent);
+    free(file_content);
+
     return 0;
 }
 
 void receivefile(int fd_sk, void** buff, size_t* lenght){
     size_t size = receiveInteger(fd_sk);
 
-    fprintf(stdout, "RECEIVED SIZE: %d\n", size);
     *lenght = size;
 
     *buff = malloc(size* sizeof(char));
+
     if(*buff == NULL){
         fprintf(stderr, "Could not receive a file: no storage left\n");
         exit(errno);
@@ -235,8 +216,6 @@ void receivefile(int fd_sk, void** buff, size_t* lenght){
         fprintf(stderr, "An error occurred reading file\n");
         exit(errno);
     }
-    fflush(stdout);
-        fprintf(stdout, "RECEIVED buff: %d, size:%d\n", buff, size);
 }
 
 void sendStr(int to, char* msg){

@@ -72,8 +72,8 @@ int main(int argc, char *argv[]){
   argc = 3;
 
   argv[1] = "-ftmp/serversock.sk";
-  //argv[2] = "-wtest/test1";
-  argv[2] = "-wtest/test2";
+  argv[2] = "-Wtest/test1/progettosol-20_21.pdf";
+  //argv[2] = "-Wtest/test2/client";
   backup_folder = "test/backup";
 
   check_options(argc, argv);
@@ -145,7 +145,7 @@ void check_options(int argc, char *argv[]){
   if (!found_rename) {
       perr( "Opzione Socket -f[sockfilename] non specificata\n");
       perr( "Inserire il Server a cui connettersi\n");
-      return -1;
+      return;
   }
 
   if(!found_rR && download_folder != NULL){
@@ -273,11 +273,313 @@ void execute_options(int argc, char *argv[], int sd){
   char request[100];
   while ((opt = getopt(argc, argv, ":h:w:W:r:R::c:")) != -1) {
 
-    fprintf(stdout, "OPERAZIONE RICHIESTA: %c \n\n\n", opt);
+      	fprintf(stdout, "OPERAZIONE RICHIESTA: %c \n\n\n", opt);
 
     switch (opt) {
+      case 'h': {
+        print_commands();
+        break;
+      }
 
+      case 'w': {
+        char **array = NULL;
+        int n_files = -1;
+
+        int count;
+        int n = str_split(&array, optarg, ",");
+
+        if (n > 2) {
+          perr("Troppi argomenti per il comando -w dirname[,n=x]\n");
+          break;
+        }
+
+        if (n == 2)
+          if(str_toInteger(&n_files, array[1]) != 0){
+            perr("%s non è un numero\n", optarg);
+            break;
+          }
+
+        // lettura dei path dei files nella directory
+        char **files = NULL;
+        count = file_nscanAllDir(&files, array[0], n_files);
+
+        for (int i = 0; i < count; i++) {
+          send_file_to_server(backup_folder, files[i]);
+          usleep(sleep_between_requests * 1000);
+        }
+
+        str_clearArray(&array, n);
+        //str_clearArray(&files, count);
+        fprintf(stdout, "ESCO CORRETTAMENTE DA w\n");
+        break;
+      }
+
+
+      case 'W': {
+        char **files = NULL;
+        int n = str_split(&files, optarg, ",");
+        for (int i = 0; i < n; i++) {
+          send_file_to_server(backup_folder, files[i]);
+          usleep(sleep_between_requests * 1000);
+        }
+        str_clearArray(&files, n);
+        break;
+      }
+
+
+
+      default: {
+        printf("The requested operation is not supported\n");
+        break;
+      }
     }
   }
 
+}
+
+void send_file_to_server(const char *backup_folder, char *file) {
+    int errcode;
+    if(print_all) printf("Invio di \n%s\n", file);
+    if (openFile(file, O_CREATE) != 0) {
+        pcode(errno, file);
+        return;
+    }
+
+    if (writeFile(file, backup_folder) != 0) {
+        fprintf(stderr, "Writefile: error sending file %s\n", file);
+        errcode = errno;
+        pcode(errcode, file);
+    } else if(print_all){
+        psucc("File \"%s\" successfully sent\n\n", strrchr(file, '/') + 1);
+    }
+
+
+    closeFile(file);
+}
+
+int openFile(char *pathname, int flags) {
+    errno=0;
+
+    if(pathname==NULL){
+        return 0;
+    }
+
+    int response;
+    char* client_pid=str_long_toStr(getpid());
+
+    switch (flags) {
+        case O_OPEN : {
+            char *cmd = str_concatn("o:",pathname,":", client_pid, NULL);
+
+            //invio il comando al server
+            sendn(sd, cmd, str_length(cmd));
+
+            //attendo una sua risposta
+            response = (int)receiveInteger(sd);
+
+            if (response != 0) {
+                errno=response;
+                return -1;
+            }
+            free(cmd);
+            break;
+        }
+        case O_CREATE : {
+          char abs_path[1000];
+          strcpy(abs_path, pathname);
+          fprintf(stdout, "abs_path = %s\n", abs_path);
+
+          if(abs_path == NULL){
+              errno = FILE_NOT_FOUND;
+              perr("FILE NOT FOUND");
+              return -1;
+          }
+          FILE* file = fopen(abs_path,"rb");
+          size_t fsize = file_getsize(file);
+
+          char *cmd = str_concatn("c:", abs_path, ":", client_pid, NULL);
+
+          //invio il comando al server
+          sendn(sd, (char*)cmd, str_length(cmd));  //voglio creare un file
+          sendInteger(sd, fsize);                  //che inizialmente ha grandezza fsize
+
+          //attendo una sua risposta
+          response = (int)receiveInteger(sd);
+          fprintf(stdout, "\n\n\n\nRESPONSE: %d\n\n\n", response);
+
+          if(response == S_STORAGE_FULL){
+              while ((int) receiveInteger(sd)!=EOS_F){
+                  char* s= receiveStr(sd);
+                  pwarn("WARNING: Il file %s è stato espulso\n"
+                        "Aumentare la capacità del Server per poter memorizzare più file!\n\n", (strrchr(s,'/')+1));
+                  free(s);
+              }
+              response = (int)receiveInteger(sd);
+          }
+          if(response == SFILE_ALREADY_EXIST){
+            errno = SFILE_ALREADY_EXIST;
+            pwarn("WARNING: Il file %s e' gia' presente sul server!\n\n");
+            return -1;
+          }
+
+          if (response != S_SUCCESS) {
+              free(cmd);
+              free(abs_path);
+              free(client_pid);
+              errno=response;
+
+              return -1;
+          }
+          free(cmd);
+
+          break;
+        }
+
+        case O_LOCK : {
+            printf("not implemented yet...\n");
+            response = -1;
+            break;
+        }
+
+        default: {
+            fprintf(stderr, "flags argument error, use O_CREATE or O_LOCK\n");
+            response = -1;
+            break;
+        }
+    }
+    free(client_pid);
+    return response;
+}
+
+int writeFile(const char *pathname, const char *dirname) {
+
+    if(pathname==NULL && dirname != NULL){
+        errno=INVALID_ARG;
+        return -1;
+    }
+
+    if(pathname==NULL){
+        return 0;
+    }
+
+	   char* client_pid=str_long_toStr(getpid());
+
+      errno=0;
+
+    //costruisco la key
+    char abs_path[1000];
+    strcpy(abs_path, pathname);
+
+    if(abs_path==NULL) {
+        errno=FILE_NOT_FOUND;
+        return -1;
+    }
+
+    //mando la richiesta di scrittura al Server -> key: abs_path | value: file_content
+    char *request;
+    if (dirname != NULL) {
+        request = str_concatn("w:", abs_path, ":", client_pid,"?", "y", NULL);
+    } else {
+        request = str_concatn("w:", abs_path, ":", client_pid,"?", "n", NULL);
+    }
+
+
+    sendn(sd, request, str_length(request));
+
+    fprintf(stdout, "\n\nINVIATI: \n REQ -> %s\n LEN -> %d\n\n\n", request, str_length(request));
+
+    if(sendfile(sd, abs_path)==-1){
+        perr("Malloc error\n");
+        return -1;
+    }
+
+    //free(abs_path);
+    //free(request);
+    //free(client_pid);
+
+    int status = (int)receiveInteger(sd);
+
+    fprintf(stdout, "STATUS: %d\n\n", status);
+
+    if(status == S_SUCCESS){
+        return 0;
+    }
+
+    if(status != S_STORAGE_FULL){
+        errno=status;
+        return -1;
+    }
+
+    if(dirname != NULL){
+        char* dir=NULL;
+
+        if (!str_ends_with(dirname, "/")) {
+            dir = str_concat(dirname, "/");
+        } else {
+            dir = str_create(dirname);
+        }
+
+        pwarn("CAPACITY MISS: Ricezione file espulsi dal Server...\n\n");
+        while(((int)receiveInteger(sd))!=EOS_F){
+            char* filepath=receiveStr(sd);
+
+            char* filename=strrchr(filepath,'/')+1;
+            char *path = str_concat(dir, filename);
+            pwarn("Scrittura del file \"%s\" nella cartella \"%s\" in corso...\n", filename, dir);
+
+            void* buff;
+            size_t n;
+            receivefile(sd,&buff,&n);
+            FILE* file=fopen(path,"wb");
+            if(file==NULL){
+                perr("Impossibile creare un nuovo file, libera spazio!\n");
+            }else {
+                fwrite(buff, sizeof(char), n, file);
+                psucc("Download completato!\n\n");
+                fclose(file);
+            }
+            free(buff);
+            free(filepath);
+            free(path);
+        }
+
+        free(dir);
+    }else{
+        receiveInteger(sd); //attendo l EOS
+    }
+
+    status = (int)receiveInteger(sd);
+    if(status != S_SUCCESS) {
+        errno = status;
+        return -1;
+    }
+
+        request = "s";
+            sendn(sd, request, str_length(request));
+
+    return 0;
+}
+
+int closeFile(const char *pathname) {
+    errno = 0;
+
+    if(pathname==NULL){
+        return 0;
+    }
+
+    char *client_pid=str_long_toStr(getpid());
+    char *request = str_concatn("cl:", pathname,":",client_pid,NULL);
+    sendn(sd, request, str_length(request));
+
+    free(request);
+    free(client_pid);
+
+
+    int status = (int)receiveInteger(sd);
+    if(status != 0){
+        errno=status;
+        return -1;
+    }
+    fprintf(stdout, "HO CHIUSO %s\n", pathname);
+    return 0;
 }
