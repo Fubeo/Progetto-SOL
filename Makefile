@@ -15,7 +15,7 @@ server_lib = 	./lib/src/customsocket.c			\
 							./lib/src/customconfig.c			\
 							./lib/src/customfile.c				\
 							./lib/src/customprint.c				\
-							./lib/src/customhashtable.c	
+							./lib/src/customhashtable.c
 
 client_lib = 	./lib/src/customsocket.c			\
 							./lib/src/customprint.c				\

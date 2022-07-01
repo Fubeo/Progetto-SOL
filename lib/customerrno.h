@@ -32,11 +32,11 @@
 #define PROGETTO_CUSTOMERRNO_H
 
 static void pcode(int code, char* file) {
-    if(code==S_SUCCESS)
+    if(code == S_SUCCESS)
         return;
 
-    if(file==NULL)
-        file="(null)";
+    if(file == NULL)
+        file = "(null)";
 
     switch (code) {
         case SFILE_ALREADY_EXIST : {

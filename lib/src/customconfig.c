@@ -7,7 +7,7 @@
 #include "../customstring.h"
 #include "../customprint.h"
 #include "../customerrno.h"
-//#include "../customfile.h"
+#include "../customfile.h"
 
 #define CHECK_ULONG_LIMIT(x) if((x)>ULONG_MAX){ \
         (x)=ULONG_MAX;\

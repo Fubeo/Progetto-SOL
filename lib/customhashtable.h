@@ -35,7 +35,7 @@ void hash_destroy(hash_table** table, void (*delete_value)(void* value));
  *      }
  * }
  * */
-void hash_iterate(hash_table* table, void (*f)(char*, char *, void *, bool*), char* args);
+void hash_iterate(hash_table* table, void (*f)(char *, void *, bool*, void*), void* args);
 
 /* Same of hash_iterate(), but the iteration stops
  * when exit is setted to true or n is equals to 0.
@@ -52,4 +52,5 @@ bool hash_containsKey(hash_table* table, char* key);
 int hash_deleteKey(hash_table** table, char *key, void (*delete_value)(void* value));
 int hash_updateValue(hash_table** table, char* key, void* newValue, void (*delete_value)(void* value));
 bool hash_isEmpty(hash_table* table);
+void hash_print_all(hash_table* table);
 #endif //HASH_TABLE_HASH_TABLE_H

@@ -25,7 +25,7 @@
 #define MASTER_WAKEUP_SECONDS 3
 #define MASTER_WAKEUP_MS 0
 
-// IMPORTANTE: UNIRE FILE_S E RELATIVE FUNZIONI A CUSTOMFILE.H
+// ======== struct necessaria per gestione dei file da parte del server ========
 typedef struct {
     char *path;
     void *content;
@@ -33,18 +33,22 @@ typedef struct {
     list *pidlist;
 } file_s;
 
+// =============================================================================
+//                         Dichiarazione variabili e struct
+// =============================================================================
 
-// Configurazione server
+// =========================== Configurazione server ===========================
 bool server_running =  true;
 settings config = DEFAULT_SETTINGS;
 int close_type = 0;   // 0 -> nessuna chiusura, 1 -> SIGINT/SIGQUIT, 2 -> SIGHUP
+bool soft_close = false;
 
-// Strutture necessarie per la gestione del master-workers
+// ========================== Gestione master-workers ==========================
 queue *queue_clients;
 int n_clients = 0;
 int pipe_fd[2];
 
-// Strutture necessarie per la gestione dello storage interno
+// ========================= Gestione storage interno ==========================
 list *storage_fifo;
 size_t storable_files_left;
 size_t storage_left;
@@ -52,38 +56,45 @@ hash_table *tbl_file_path;
 hash_table *tbl_has_opened;
 size_t n_rimpiazzamenti_cache = 0;
 
-bool soft_close = false;
 
 
 //==============================================================================
-//                                  Funzioni
+//                             Dichiarazione funzioni
 // =============================================================================
 
+// ===================== Gestione funzioni base del server =====================
 void init_server(char *config_path);
 void *worker_function();
 void closeConnection(int client, char *cpid);
 void *stop_server(void *argv);
 
-// Gestione richieste fd_sk_client
+// ======================== Gestione richieste client ==========================
 void write_file(int fd_sk_client, char *request);
 void createFile(int fd_sk_client, char *request);
+void openFile(int client, char *request);
+void removeFile(int client, char *request);
 void closeFile(int fd_sk_client, char *request);
+void readFile(int fd_sk_client, char *request);
+void readNFile(int client, char *request);
+void send_nfiles(char *key, void *value, bool *exit, void *args);
 
+
+// ====================== Gestione storage del server ==========================
 void free_space(int fd_sk_client, char option, size_t fsize);
 void file_destroy(void *f);
 void file_open(file_s **f, char *cpid);
 bool file_isOpened(file_s *f);
 static file_s *file_init(char *path);
 void clear_openedFiles(char *key, void *value, bool *exit, void *cpid);
-void print_storage();
 bool file_is_opened_by(file_s *f, char *pid);
 bool file_is_empty(file_s *f);
 void file_update(file_s **f, void *newContent, size_t newSize);
 void client_closes_file(file_s **f, char *cpid);
+void print_storage();
 
 int main() {
   // Dichiarazione socket
-  int fd_sk_server = -1, fd_sk_client = -1;
+  int fd_sk_server = -1;
 
   init_server(CONFIG);
 
@@ -175,7 +186,7 @@ int main() {
 
                 char *cpid = receiveStr(fd_sk_client);
 
-                fprintf(stdout, "CLIENT cpid:%d\n", cpid);
+                fprintf(stdout, "CLIENT cpid:%s\n", cpid);
 
                 int *n = malloc(sizeof(int));
                 if (n == NULL) {
@@ -222,6 +233,10 @@ int main() {
     close(fd_sk_server);
 }
 
+//==============================================================================
+//                             Definizione funzioni
+// =============================================================================
+
 
 void init_server(char *config_path) {
   // lettura file config
@@ -251,59 +266,80 @@ void *worker_function(){
     int fd_sk_client = queue_get(&queue_clients);
     if(fd_sk_client == -1) break;   // se non gli viene associato nessun fd_sk_client
 
-    bool is_client_connected = true;
 
-  		fprintf(stdout, "ATTENDO NUOVE REQUEST DAL CLIENT\n\n");
+		fprintf(stdout, "ATTENDO NUOVE REQUEST DAL CLIENT\n\n");
 
-      char *request = receiveStr(fd_sk_client);
+    char *request = receiveStr(fd_sk_client);
 
-      fflush(stdout);
-      printf("\n\n\nRICHIESTA DEL CLIENT %d: %s\n", fd_sk_client, request);
+    fflush(stdout);
+    printf("\n\n\nRICHIESTA DEL CLIENT %d: %s\n", fd_sk_client, request);
 
-      if (!str_is_empty(request)) {
-        switch (request[0]) {
-          case 'w': {
+    if (!str_is_empty(request)) {
+      switch (request[0]) {
+        case 'c': {
+          char *cmd;
+          if (request[1] == 'l') {
+            cmd = str_cut(request, 3, str_length(request) - 3);
+            closeFile(fd_sk_client, cmd);
+            free(cmd);
+          } else {
+            cmd = str_cut(request, 2, str_length(request) - 2);
+            createFile(fd_sk_client, cmd);
+            free(cmd);
+          }
+          break;
+        }
+
+        case 'o': {
             char *cmd = str_cut(request, 2, str_length(request) - 2);
-            fprintf(stdout, "%s\n", cmd);
-            write_file(fd_sk_client, cmd);
+            openFile(fd_sk_client, cmd);
             free(cmd);
             break;
-          }
-          case 'c': {
-            char *cmd;
-            if (request[1] == 'l') {
-              cmd = str_cut(request, 3, str_length(request) - 3);
-              closeFile(fd_sk_client, cmd);
-              free(cmd);
-            } else {
-              cmd = str_cut(request, 2, str_length(request) - 2);
-              createFile(fd_sk_client, cmd);
-              free(cmd);
-            }
-            break;
-          }
-          case 'e': {
-            char *cmd = str_cut(request, 2, str_length(request) - 2);
-            closeConnection(fd_sk_client, cmd);
-            free(cmd);
-            break;
-          }
         }
-        print_storage();
-      }
-      if (request[0] != 'e' || str_is_empty(request)) {
-        if (writen(pipe_fd[1], &fd_sk_client, sizeof(int)) == -1) {
-          fprintf(stderr, "An error occurred on write back client to the pipe\n");
-          exit(errno);
+
+        case 'w': {
+          char *cmd = str_cut(request, 2, str_length(request) - 2);
+          fprintf(stdout, "%s\n", cmd);
+          write_file(fd_sk_client, cmd);
+          free(cmd);
+          break;
+        }
+
+        case 'r': {
+          char *cmd;
+          if (request[1] == 'n') {
+            cmd = str_cut(request, 3, str_length(request) - 3);
+            readNFile(fd_sk_client, cmd);
+          } else if (request[1] == 'm') {
+            cmd = str_cut(request, 3, str_length(request) - 3);
+            removeFile(fd_sk_client, cmd);
+          } else {
+            cmd = str_cut(request, 2, str_length(request) - 2);
+            readFile(fd_sk_client, cmd);
+          }
+          free(cmd);
+
+          break;
+        }
+
+
+        case 'e': {
+          char *cmd = str_cut(request, 2, str_length(request) - 2);
+          closeConnection(fd_sk_client, cmd);
+          free(cmd);
+          break;
         }
       }
-
-      free(request);
-
-      sleep(3);
-
+      print_storage();
     }
-
+    if (request[0] != 'e' || str_is_empty(request)) {
+      if (writen(pipe_fd[1], &fd_sk_client, sizeof(int)) == -1) {
+        fprintf(stderr, "An error occurred on write back client to the pipe\n");
+        exit(errno);
+      }
+    }
+    free(request);
+  }
 }
 
 void closeConnection(int client, char *cpid) {
@@ -357,14 +393,187 @@ void *stop_server(void *argv) {
         return NULL;
     }
 
-    if (signal_captured == SIGINT || signal_captured == SIGQUIT) {   //SIGINT o SIGQUIT -> uscita forzata
+    if (signal_captured == SIGINT || signal_captured == SIGQUIT) {        // SIGINT o SIGQUIT -> uscita forzata
         server_running = false;
-    } else if (signal_captured == SIGHUP || signal_captured == SIGTERM) { //SIGHUP o SIGTERM -> uscita soft
+    } else if (signal_captured == SIGHUP || signal_captured == SIGTERM) { // SIGHUP o SIGTERM -> uscita soft
         soft_close = true;
     }
 
     writen(pipe_fd[1], &t, sizeof(int)); //sveglio la select scrivendo nella pipe
     return argv;
+}
+
+void createFile(int fd_sk_client, char *request) {
+  size_t fsize = receiveInteger(fd_sk_client);
+
+  char **split = NULL;
+  int n = str_split(&split, request, ":");
+  char *filepath = split[0];
+  char *cpid = split[1];
+  assert(!str_is_empty(filepath) && filepath != NULL);
+
+  if (hash_containsKey(tbl_file_path, filepath)) {
+    pwarn("Il client %d ha tentato di creare il file %s, che già esiste sul Server\n", fd_sk_client, (strrchr(filepath,'/')+1));
+    perr("Richiesta non eseguita\n");
+    sendInteger(fd_sk_client, SFILE_ALREADY_EXIST);
+
+  } else if (fsize > config.MAX_STORAGE) { //se il file è troppo grande
+    pwarn("Il client %d ha tentato di mettere un file troppo grande.\n", fd_sk_client);
+    perr("Richiesta non eseguita.\n");
+    sendInteger(fd_sk_client, SFILE_TOO_LARGE);
+
+  } else if (storable_files_left == 0) {
+    pwarn("Rilevata CAPACITY MISS\n", fd_sk_client);
+
+    sendInteger(fd_sk_client, S_STORAGE_FULL);
+    free_space(fd_sk_client, 'c', 0);
+    pwarn("Impossibile espellere file\n", fd_sk_client);
+    perr("Richiesta non eseguita\n");
+    sendInteger(fd_sk_client, S_STORAGE_FULL);
+
+  } else {
+    assert(hash_containsKey(tbl_has_opened, cpid));
+
+    fprintf(stdout, "filepath arrivato:\n____%s/\n", filepath);
+
+    file_s *f = file_init(filepath);//creo un nuovo file
+
+    fprintf(stdout, "file creato di dimensione %ld nome %s\n", f->size, f->path);
+
+    if (f == NULL) {
+      sendInteger(fd_sk_client, MALLOC_ERROR);
+      return;
+    }
+    hash_insert(&tbl_file_path, filepath, f);	// lo memorizzo
+    file_open(&f, cpid); 											// lo apro
+
+    storable_files_left--;										// aggiorno il numero di file memorizzabili
+    list_insert(&storage_fifo, filepath, f);  // e infine lo aggiungo alla coda fifo
+
+    printf("FILE CREATO CON SUCCESSO\n\n");
+
+    sendInteger(fd_sk_client, S_SUCCESS);			// notifico il client dell'esito positivo dell'operazione
+  }
+  str_clearArray(&split, n);
+}
+
+void openFile(int client, char *request) {
+    char **array = NULL;
+    int n = str_split(&array, request, ":");
+    char *filepath = array[0];  //path del file inviato dal Client
+    char *cpid = array[1];      //pid del client
+
+    if (!hash_containsKey(tbl_file_path, filepath)) { //controllo se il file non è presente nello storage
+
+            pwarn("Il client %d ha eseguito un operazione su un file che non esiste\n", client);
+
+
+
+            perr("Richiesta non eseguita");
+
+        sendInteger(client, SFILE_NOT_FOUND);
+        str_clearArray(&array, n);
+        return;
+    }
+
+    file_s *f = hash_getValue(tbl_file_path, filepath);
+    if (file_is_opened_by(f, cpid)) { //controllo se il file è già stato aperto dal Client
+
+            pwarn("Il client %d ha tentato di aprire un file già aperto\n", client);
+
+            perr("Richiesta non eseguita");
+
+
+        sendInteger(client, SFILE_ALREADY_OPENED);
+        str_clearArray(&array, n);
+        return;
+    }
+
+    file_open(&f, cpid);
+    sendInteger(client, S_SUCCESS);
+
+
+        psucc("Il client %d ha aperto il file %s\n", client, (strrchr(filepath,'/')+1));
+
+    str_clearArray(&array, n);
+}
+
+void removeFile(int client, char *request) {
+    // il file non esiste
+    if (!hash_containsKey(tbl_file_path, request)) {
+            pwarn("Il client %d ha eseguito un operazione su un file che non esiste\n", client);
+
+
+        sendInteger(client, SFILE_NOT_FOUND);
+        return;
+    }
+
+    file_s *f = hash_getValue(tbl_file_path, request);
+    // elimino il file solo se non è aperto da qualcuno
+    if (file_isOpened(f)) {
+            pwarn("Il client %d ha tentato di cancellare un file aperto\n", client);
+
+
+        sendInteger(client, SFILE_OPENED);
+        return;
+    }
+
+    storage_left += f->size;
+    if (storage_left > config.MAX_STORAGE) {
+        storage_left = config.MAX_STORAGE;
+    }
+    hash_deleteKey(&tbl_file_path, request, &file_destroy);
+    storage_left++;
+    sendInteger(client, S_SUCCESS);
+
+        psucc("File %s rimosso dal client %d\n\n", (strrchr(request,'/')+1), client);
+
+}
+
+void closeFile(int fd_sk_client, char *request) {
+    char **array = NULL;
+    int n = str_split(&array, request, ":");
+    assert(n == 2);
+
+
+    char *filepath = array[0];
+    char *cpid = array[1];
+
+        fprintf(stdout, "filepath = %s\n", filepath);
+
+
+
+
+    if (!hash_containsKey(tbl_file_path, filepath)) {
+
+        pwarn("Il client %d ha eseguito un operazione su un file che non esiste\n", fd_sk_client);
+
+        sendInteger(fd_sk_client, SFILE_NOT_FOUND);
+        str_clearArray(&array, n);
+        return;
+    }
+
+
+    file_s *f = hash_getValue(tbl_file_path, filepath);
+
+    if (!file_is_opened_by(f, cpid)) {
+            pwarn("Il client %d ha eseguito un operazione su un file non aperto\n", fd_sk_client);
+
+
+        sendInteger(fd_sk_client, SFILE_NOT_OPENED);
+        str_clearArray(&array, n);
+        return;
+    }
+
+    client_closes_file(&f, cpid);
+      fprintf(stdout, "CONNESSIONE CHIUSA\n");
+
+    sendInteger(fd_sk_client, S_SUCCESS);
+        psucc("File %s chiuso dal client %s\n\n", (strrchr(filepath,'/')+1), cpid);
+
+
+    str_clearArray(&array, n);
+
 }
 
 void write_file(int fd_sk_client, char *request) {
@@ -374,8 +583,6 @@ void write_file(int fd_sk_client, char *request) {
     char *filepath = split[0];
     char *cpid = split[1];
 
-    int uno;
-
     char option = (split[2])[0];
     assert(option == 'y' || option == 'n');
     size_t fsize;
@@ -384,14 +591,9 @@ void write_file(int fd_sk_client, char *request) {
 
     // Il server riceve il contenuto e la dimensione del file
     receivefile(fd_sk_client, &fcontent, &fsize);
-    fprintf(stdout, "file_content at addr %p:\n%s\n", fcontent, fcontent);
-    fprintf(stdout, "File size: %d\n\n", fsize);
-
-
 
     if (fsize > config.MAX_STORAGE) {
-        pwarn("Il fd_sk_client %d ha inviato un file troppo grande\n", fd_sk_client);
-
+        pwarn("Il client %d ha inviato un file troppo grande\n", fd_sk_client);
         sendInteger(fd_sk_client, SFILE_TOO_LARGE);
         free(fcontent);
         str_clearArray(&split, n);
@@ -451,17 +653,12 @@ void write_file(int fd_sk_client, char *request) {
     assert(f->path != NULL && !str_is_empty(f->path));
     assert(storage_left <= config.MAX_STORAGE);
 
-    fprintf(stdout, "Storage left: %d\n\n", storage_left);
-    fprintf(stdout, "File size: %d\n\n", fsize);
-
     file_update(&f, fcontent, fsize);
     storage_left -= fsize;
 
-    fprintf(stdout, "Storage left: %d\n\n", storage_left);
 
     sendInteger(fd_sk_client, S_SUCCESS);
 
-    fprintf(stdout, "SUCCESS INVIATA\n\n", storage_left);
 
     str_clearArray(&split, n);
 
@@ -469,105 +666,63 @@ void write_file(int fd_sk_client, char *request) {
               "Capacità dello storage: %d\n\n", storage_left);
 }
 
-void createFile(int fd_sk_client, char *request) {
-  size_t fsize = receiveInteger(fd_sk_client);
-
-  char **split = NULL;
-  int n = str_split(&split, request, ":");
-  char *filepath = split[0];
-  char *cpid = split[1];
-  assert(!str_is_empty(filepath) && filepath != NULL);
-
-  if (hash_containsKey(tbl_file_path, filepath)) {
-    pwarn("Il client %d ha tentato di creare il file %s, che già esiste sul Server\n", fd_sk_client, (strrchr(filepath,'/')+1));
-    perr("Richiesta non eseguita\n");
-    sendInteger(fd_sk_client, SFILE_ALREADY_EXIST);
-
-  } else if (fsize > config.MAX_STORAGE) { //se il file è troppo grande
-    pwarn("Il client %d ha tentato di mettere un file troppo grande.\n", fd_sk_client);
-    perr("Richiesta non eseguita.\n");
-    sendInteger(fd_sk_client, SFILE_TOO_LARGE);
-
-  } else if (storable_files_left == 0) {
-    pwarn("Rilevata CAPACITY MISS\n", fd_sk_client);
-
-    sendInteger(fd_sk_client, S_STORAGE_FULL);
-    free_space(fd_sk_client, 'c', 0);
-    pwarn("Impossibile espellere file\n", fd_sk_client);
-    perr("Richiesta non eseguita\n");
-    sendInteger(fd_sk_client, S_STORAGE_FULL);
-
-  } else {
-    assert(hash_containsKey(tbl_has_opened, cpid));
-
-    fprintf(stdout, "filepath arrivato:\n____%s/\n", filepath);
-
-    file_s *f = file_init(filepath);//creo un nuovo file
-
-    fprintf(stdout, "file creato di dimensione %ld nome %s\n", f->size, f->path);
-
-    if (f == NULL) {
-      sendInteger(fd_sk_client, MALLOC_ERROR);
-      return;
-    }
-    hash_insert(&tbl_file_path, filepath, f);	// lo memorizzo
-    file_open(&f, cpid); 											// lo apro
-
-    storable_files_left--;										// aggiorno il numero di file memorizzabili
-    list_insert(&storage_fifo, filepath, f);  // e infine lo aggiungo alla coda fifo
-
-    printf("FILE CREATO CON SUCCESSO\n\n");
-
-    sendInteger(fd_sk_client, S_SUCCESS);			//notifico il client dell'esito positivo dell'operazione
-  }
-  str_clearArray(&split, n);
-}
-
-void closeFile(int fd_sk_client, char *request) {
+void readFile(int fd_sk_client, char *request) {
+    assert(!str_is_empty(request) && request != NULL);
     char **array = NULL;
     int n = str_split(&array, request, ":");
-    assert(n == 2);
-
-
     char *filepath = array[0];
     char *cpid = array[1];
 
-        fprintf(stdout, "filepath = %s\n", filepath);
-
-
-
-
+    //controllo che il file sia stato creato
     if (!hash_containsKey(tbl_file_path, filepath)) {
-
-        pwarn("Il client %d ha eseguito un operazione su un file che non esiste\n", fd_sk_client);
-
         sendInteger(fd_sk_client, SFILE_NOT_FOUND);
         str_clearArray(&array, n);
         return;
     }
+    file_s *file = hash_getValue(tbl_file_path, filepath);
 
-
-    file_s *f = hash_getValue(tbl_file_path, filepath);
-
-    if (!file_is_opened_by(f, cpid)) {
-            pwarn("Il client %d ha eseguito un operazione su un file non aperto\n", fd_sk_client);
-
-
+    if(!file_is_opened_by(file, cpid)){
         sendInteger(fd_sk_client, SFILE_NOT_OPENED);
         str_clearArray(&array, n);
         return;
     }
 
-    client_closes_file(&f, cpid);
-      fprintf(stdout, "CONNESSIONE CHIUSA\n");
-
     sendInteger(fd_sk_client, S_SUCCESS);
-        psucc("File %s chiuso dal client %s\n\n", (strrchr(filepath,'/')+1), cpid);
 
-
+    sendn(fd_sk_client, file->content, file->size);
     str_clearArray(&array, n);
-
 }
+
+void readNFile(int fd_sk_client, char *request) {
+    if (hash_isEmpty(tbl_file_path)) {
+        sendInteger(fd_sk_client, S_STORAGE_EMPTY);
+        return;
+    }
+
+    int n;
+    int res = str_toInteger(&n, request);
+    assert(res != -1);
+
+    fprintf(stdout, "ORA INVIO %d FILES\n", n);
+    sendInteger(fd_sk_client, S_SUCCESS);
+    hash_iteraten(tbl_file_path, &send_nfiles, (void *) &fd_sk_client, n);
+    sendInteger(fd_sk_client, EOS_F);
+}
+
+
+void send_nfiles(char *key, void *value, bool *exit, void *args) {
+    int client = *((int*) args);
+    file_s *f = (file_s *) value;
+    sendInteger(client, !EOS_F);
+    sendStr(client, key);
+    sendn(client, f->content, f->size);
+
+    //per togliere il warning "parameter never used"
+    exit=exit;
+    args=args;
+}
+
+// ====================== Gestione storage del server ==========================
 
 // Funzione di rimozione dei file in caso di Capacity Misses.
 void free_space(int fd_sk_client, char option, size_t fsize) {
@@ -649,8 +804,6 @@ void file_open(file_s **f, char *cpid) {
 
     fprintf(stdout, "file_open\n\n");
 
-    hash_iterate(tbl_has_opened, printf, "%s %s %s\n\n");
-        fprintf(stdout, "iterated\n\n");
     int *n = (int *) hash_getValue(tbl_has_opened, cpid);
 
     *n = *n + 1;
@@ -691,19 +844,14 @@ void print_storage(){
 
   l = storage_fifo->head;
   file_s *prova = (file_s*)l->value;
-  FILE* pf = (FILE*)prova->content;
 
-  printf("CONTENT : %d\n\n", prova->content);
+  printf("CONTENT : %p\n\n", prova->content);
 
-  printf("TBL_FILE_PATH:\n");
-  hash_iterate(tbl_file_path, printf, "%s %d\n\n");
+  printf("\nTBL_FILE_PATH:\n");
+  hash_print_all(tbl_file_path);
 
-  printf("TBL_HAS_OPENED:\n");
-  hash_iterate(tbl_has_opened, printf, "%s %d\n\n");
-
-
-
-  //printf(" %s\n", (char*)(prova->content));
+  printf("\nTBL_HAS_OPENED:\n");
+  hash_print_all(tbl_has_opened);
 
 }
 
@@ -739,9 +887,6 @@ void file_update(file_s **f, void *newContent, size_t newSize) {
 void client_closes_file(file_s **f, char *cpid) {
     list_remove(&(*f)->pidlist, cpid, NULL);
 
-    fprintf(stdout, "ORA ITERO tbl_has_opened\n");
-    hash_iterate(tbl_has_opened, printf, "%s %s %s\n\n");
-
 
     int *n = (int *) hash_getValue(tbl_has_opened, cpid);
     *n -= 1;
@@ -758,6 +903,6 @@ void clear_openedFiles(char *key, void *value, bool *exit, void *cpid) {
     }
 
     //per togliere il warning "parameter never used"
-    key;
-    exit;
+    key = key;
+    exit = exit;
 }

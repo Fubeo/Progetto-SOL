@@ -81,10 +81,9 @@ bool list_remove(list **l, char* key, void (*delete_value)(void* value))
     if(curr != NULL && succ == NULL) {
         if(str_equals(curr->key, key)) {
             free(curr->key);
-            if(delete_value != NULL)
-                delete_value(curr->value);
-                free(curr);
-                (*l)->length--;
+            if(delete_value != NULL) delete_value(curr->value);
+            free(curr);
+            (*l)->length--;
 
             return true;
         }

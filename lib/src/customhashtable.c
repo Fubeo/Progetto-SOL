@@ -151,14 +151,14 @@ void hash_destroy(hash_table** table, void (*delete_value)(void*)) {
     pcolor(STANDARD, "");
 }
 
-void hash_iterate(hash_table* table, void (*f)(char *, char *, void *, bool*), char* args) {
+void hash_iterate(hash_table* table, void (*f)(char *, void *, bool*, void*), void* args) {
     pthread_mutex_lock(&(table)->lock);
     bool exit=false;
     for (int i = 0; i < table->max_size; i++) {
         if (table->buckets[i] != NULL) {
             list_node *head = table->buckets[i]->head;
             while (head != NULL && !exit) {
-                f(args, head->key, head->value, &exit);
+                f(head->key, head->value, &exit, args);
                 head = head->next;
             }
 
@@ -219,4 +219,22 @@ int hash_deleteKey(hash_table** table, char *key, void (*delete_value)(void* )) 
     pthread_mutex_unlock(&(*table)->lock);
 
     return true;
+}
+
+void hash_print_all(hash_table* table) {
+    pthread_mutex_lock(&(table)->lock);
+    bool exit=false;
+    for (int i = 0; i < table->max_size; i++) {
+        if (table->buckets[i] != NULL) {
+            list_node *head = table->buckets[i]->head;
+            while (head != NULL && !exit) {
+                fprintf(stdout, "%s %p\n", head->key, head->value);
+                head = head->next;
+            }
+
+            if(exit)
+                break;
+        }
+    }
+    pthread_mutex_unlock(&(table)->lock);
 }

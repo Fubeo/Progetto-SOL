@@ -194,7 +194,6 @@ int sendfile(int fd_sk, const char* pathname){
         fprintf(stderr, "An error occurred on sending file\n");
         exit(errno);
     }
-    fprintf(stdout, "file_content:\n%s\n", file_content);
 
     free(file_content);
 
