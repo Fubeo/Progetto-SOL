@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -31,6 +32,7 @@ typedef struct {
     void *content;
     size_t size;
     list *pidlist;
+    pthread_mutex_t file_lock;
 } file_s;
 
 // =============================================================================
@@ -41,6 +43,7 @@ typedef struct {
 bool server_running =  true;
 settings config = DEFAULT_SETTINGS;
 bool soft_close = false;
+pthread_mutex_t server_data_lock = PTHREAD_MUTEX_INITIALIZER;
 
 // ========================== Gestione master-workers ==========================
 queue *queue_clients;
@@ -76,6 +79,7 @@ void closeFile(int fd_client, char *request);
 void readFile(int fd_client, char *request);
 void readNFile(int client, char *request);
 void send_nfiles(char *key, void *value, bool *exit, void *args);
+void appendFile(int client, char *request);
 
 
 // ====================== Gestione storage del server ==========================
@@ -140,7 +144,7 @@ int main() {
   sortedlist_insert(&fd_list, pipe_fd[0]);
 
   int sreturn;
-  psucc("[Server in Ascolto]\n\n");
+  pcolor(CYAN,"=== SERVER LISTENING ============================================\n\n");
 
   while (server_running) {
       fd_set ready_sockets = current_sockets;
@@ -159,17 +163,14 @@ int main() {
       if (soft_close && n_clients == 0) {
           break;
       }
-      fprintf(stdout, "SRETURN: %d\n", sreturn);
 
       if (sreturn > 0) {
-        fprintf(stdout, "In attesa di un client...\n");
+        fprintf(stdout, "Waiting for a client...\n");
         sortedlist_iterate();
-        fprintf(stdout, "INIZIO CICLO\n");
         for (int i = 0; i <= sortedlist_getMax(fd_list); i++) {
 
           int set_fd = sortedlist_getNext(fd_list);
 
-          fprintf(stdout, "%d\n", set_fd);
 
           if (FD_ISSET(set_fd, &ready_sockets)) {
 
@@ -179,13 +180,13 @@ int main() {
               if (fd_client != -1) {
                 if (soft_close) {
 
-                    pwarn("Client %d rifiutato\n", fd_client);
+                    pwarn("Client %d refused\n", fd_client);
 
                   sendInteger(fd_client, CONNECTION_REFUSED);
                   close(fd_client);
                   break;
                 }
-                  printf("Client %d connesso\n", fd_client);
+                  printf("Client %d connected\n", fd_client);
 
                 sendInteger(fd_client, CONNECTION_ACCEPTED);
 
@@ -195,7 +196,7 @@ int main() {
 
                 int *n = malloc(sizeof(int));
                 if (n == NULL) {
-                    fprintf(stderr, "Impossibile allocare per nuovo client\n");
+                    fprintf(stderr, "Unable to allocate memory for a new client\n");
                     return errno;
                 }
                 *n = 0;
@@ -222,7 +223,6 @@ int main() {
           }
         }
       }
-      fprintf(stdout, "FINE CICLO\n");
     }
   }
 
@@ -283,15 +283,20 @@ void *worker_function(){
     if(fd_client == -1) break;   // se non gli viene associato nessun client
 
 
-		fprintf(stdout, "ATTENDO NUOVE REQUEST DAL CLIENT\n\n");
-
     char *request = receiveStr(fd_client);
 
     fflush(stdout);
-    printf("\n\n\nRICHIESTA DEL CLIENT %d: %s\n", fd_client, request);
+    pcolor(BLUE, "\nReceived a new request by client %d: %s\n", fd_client, request);
 
     if (!str_is_empty(request)) {
       switch (request[0]) {
+        case 'a': {
+          char *cmd = str_cut(request, 2, str_length(request) - 2);
+          appendFile(fd_client, cmd);
+          free(cmd);
+          break;
+        }
+
         case 'c': {
           char *cmd;
           if (request[1] == 'l') {
@@ -366,8 +371,7 @@ void closeConnection(int client, char *cpid) {
         sendInteger(client, S_SUCCESS);
     } else {
 
-            pwarn("ATTENZIONE: il Client %d non ha chiuso dei file\n"
-                  "Chiusura in corso...", client);
+            pwarn("Client %d has not closed many files yet\nClosing...", client);
 
 
         sendInteger(client, SFILES_FOUND_ON_EXIT);
@@ -382,7 +386,7 @@ void closeConnection(int client, char *cpid) {
     hash_deleteKey(&tbl_has_opened, cpid, &free);
     if (close(client) != 0) {
         perr("ATTENZIONE: errore nella chiusura del Socket con il client %d\n", client);
-    } else psucc("Client %d disconnesso\n\n", client);
+    } else psucc("Client %d disconnected\n\n", client);
 
     n_clients--;
 }
@@ -411,7 +415,6 @@ void *stop_server(void *argv) {
 
     if (signal_captured == SIGINT || signal_captured == SIGQUIT) {        // SIGINT o SIGQUIT -> uscita forzata
         server_running = false;
-        psucc("REQUESTED SIGINT\n");
     } else if (signal_captured == SIGHUP || signal_captured == SIGTERM) { // SIGHUP o SIGTERM -> uscita soft
         soft_close = true;
     }
@@ -526,9 +529,9 @@ void openFile(int client, char *request) {
 }
 
 void removeFile(int client, char *request) {
-    // il file non esiste
+    // Controllo se il file esiste
     if (!hash_containsKey(tbl_file_path, request)) {
-            pwarn("Il client %d ha eseguito un operazione su un file che non esiste\n", client);
+            pwarn("Client %d tried to access a non-existent file\n", client);
 
 
         sendInteger(client, SFILE_NOT_FOUND);
@@ -536,24 +539,32 @@ void removeFile(int client, char *request) {
     }
 
     file_s *f = hash_getValue(tbl_file_path, request);
-    // elimino il file solo se non è aperto da qualcuno
+
+    // Controllo se il file e' gia' stato aperto da qualcuno
     if (file_isOpened(f)) {
-            pwarn("Il client %d ha tentato di cancellare un file aperto\n", client);
+            pwarn("Client %d tried to access an already opened file\n", client);
 
 
         sendInteger(client, SFILE_OPENED);
         return;
     }
 
+    // Aggiorno i dati del server
+    pthread_mutex_lock(&server_data_lock);
+    storage_left++;
     storage_left += f->size;
     if (storage_left > config.MAX_STORAGE) {
-        storage_left = config.MAX_STORAGE;
+      storage_left = config.MAX_STORAGE;
     }
+    pthread_mutex_unlock(&server_data_lock);
+
+    // Rimozione del file dallo storage
     hash_deleteKey(&tbl_file_path, request, &file_destroy);
-    storage_left++;
+
+
     sendInteger(client, S_SUCCESS);
 
-        psucc("File %s rimosso dal client %d\n\n", (strrchr(request,'/')+1), client);
+        psucc("File %s removed by client %d\n\n", (strrchr(request,'/')+1), client);
 
 }
 
@@ -593,10 +604,9 @@ void closeFile(int fd_client, char *request) {
     }
 
     client_closes_file(&f, cpid);
-      fprintf(stdout, "CONNESSIONE CHIUSA\n");
 
     sendInteger(fd_client, S_SUCCESS);
-        psucc("File %s chiuso dal client %s\n\n", (strrchr(filepath,'/')+1), cpid);
+        psucc("File %s closed by client %s\n\n", (strrchr(filepath,'/')+1), cpid);
 
 
     str_clearArray(&array, n);
@@ -680,17 +690,19 @@ void write_file(int fd_client, char *request) {
     assert(f->path != NULL && !str_is_empty(f->path));
     assert(storage_left <= config.MAX_STORAGE);
 
+    // Scrivo il contenuto nel file
     file_update(&f, fcontent, fsize);
-    storage_left -= fsize;
 
+    pthread_mutex_lock(&server_data_lock);
+    storage_left -= fsize;
+    pthread_mutex_unlock(&server_data_lock);
 
     sendInteger(fd_client, S_SUCCESS);
 
 
     str_clearArray(&split, n);
 
-    psucc("Write completata\n"
-              "Capacità dello storage: %d\n\n", storage_left);
+    psucc("Write completed. Current storage left: %d\n\n", storage_left);
 }
 
 void readFile(int fd_client, char *request) {
@@ -749,6 +761,96 @@ void send_nfiles(char *key, void *value, bool *exit, void *args) {
     args=args;
 }
 
+void appendFile(int client, char *request) {
+    char **array = NULL;
+    int n = str_split(&array, request, ":?");
+    char *filepath = array[0];
+    char *cpid = array[1];
+    char option = (array[2])[0];
+
+    assert(option == 'y' || option == 'n');
+
+    void *fcontent;
+    size_t fsize;
+    receivefile(client, &fcontent, &fsize);
+    file_s *f = hash_getValue(tbl_file_path, filepath);
+
+    if ((f->size + fsize) > config.MAX_STORAGE) {
+        if (config.PRINT_LOG == 2) {
+            pwarn("Il client %d ha inviato un file troppo grande\n\n", client);
+        }
+
+        sendInteger(client, SFILE_TOO_LARGE);
+        free(fcontent);
+        return;
+    }
+
+    if (!hash_containsKey(tbl_file_path, filepath)) {
+        if (config.PRINT_LOG == 2) {
+            pwarn("Il client %d ha eseguito un operazione su un file che non esiste\n\n", client);
+        }
+
+        sendInteger(client, SFILE_NOT_FOUND);
+        free(fcontent);
+        str_clearArray(&array, n);
+        return;
+    }
+
+    if (!file_is_opened_by(f, cpid)) {
+        if (config.PRINT_LOG == 2) {
+            pwarn("Il client %d ha eseguito un operazione su un file non aperto\n\n", client);
+        }
+        sendInteger(client, SFILE_NOT_OPENED);
+        free(fcontent);
+        str_clearArray(&array, n);
+        return;
+    }
+
+    //da qui in poi il file viene inserito
+    if (fsize > storage_left) {  //se non ho spazio
+        if (config.PRINT_LOG == 2) {
+            pwarn("Rilevata Capacity Misses\n");
+        }
+        sendInteger(client, S_STORAGE_FULL);
+        free_space(client, option, fsize);
+
+        if (fsize >= storage_left) {
+            if (config.PRINT_LOG == 1 || config.PRINT_LOG == 2) {
+                perr("Non è stato possibile liberare spazio\n\n");
+            }
+            free(fcontent);
+            str_clearArray(&array, n);
+            sendInteger(client, S_FREE_ERROR);
+            return;
+        }
+
+        if (config.PRINT_LOG == 2) {
+            printf("Spazio liberato!\n\n");
+        }
+
+    }
+
+    size_t newSize = f->size + fsize;
+    void *newContent = malloc(newSize);
+    if (newContent == NULL) {
+        perr("malloc error: impossibile appendere il contenuto richiesto\n");
+        sendInteger(client, MALLOC_ERROR);
+        return;
+    }
+
+    memcpy(newContent, f->content, f->size);
+    memcpy(newContent + f->size, fcontent, fsize);
+
+    free(f->content);
+    f->content = newContent;
+    f->size = newSize;
+    sendInteger(client, S_SUCCESS);
+
+    if (config.PRINT_LOG == 1 || config.PRINT_LOG == 2) {
+        psucc("Append per il Client %d eseguita\n\n", client);
+    }
+}
+
 // ====================== Gestione storage del server ==========================
 
 // Funzione di rimozione dei file in caso di Capacity Misses.
@@ -787,16 +889,18 @@ void free_space(int fd_client, char option, size_t fsize) {
                 sendStr(fd_client, f->path);
             }
 
+            pthread_mutex_lock(&server_data_lock);
             storage_left += f->size;
             if (storage_left > config.MAX_STORAGE) {
                 //mi assicuro di rimanere nel range 0 <= x <= MAX_STORAGE
 
                 storage_left = config.MAX_STORAGE;
             }
-
-            hash_deleteKey(&tbl_file_path, f->path, &file_destroy);
             storable_files_left++;
             n_cache_replacements++;
+            pthread_mutex_unlock(&server_data_lock);
+
+            hash_deleteKey(&tbl_file_path, f->path, &file_destroy);
 
             char* key=curr->key;
             curr=curr->next;
@@ -824,15 +928,12 @@ void file_destroy(void *f) {
     free(file);
 }
 
-/* Funzione che simula l apertura del file f da parte del Client cpid.
+/* Funzione che simula l apertura del file f da parte del client cpid.
  * */
 void file_open(file_s **f, char *cpid) {
     list_insert(&(*f)->pidlist, cpid, NULL);
 
-    fprintf(stdout, "file_open\n\n");
-
     int *n = (int *) hash_getValue(tbl_has_opened, cpid);
-
     *n = *n + 1;
 
     hash_updateValue(&tbl_has_opened, cpid, n, NULL);
@@ -848,13 +949,14 @@ static file_s *file_init(char *path) {
 
     file_s *file = malloc(sizeof(file_s));
     if (file == NULL) {
-        perr("Impossibile il file %s\n", (strrchr(path, '/') + 1));
+        perr("File %s was impossible to allocate.\n", (strrchr(path, '/') + 1));
         return NULL;
     }
     file->path = str_create(path);  //creo una copia del path per semplicità
     file->content = 0;
     file->size = 0;
     file->pidlist = list_create();
+    pthread_mutex_init ( &(file->file_lock), NULL);
     return file;
 }
 
@@ -874,22 +976,28 @@ bool file_is_empty(file_s *f) {
  * Il vecchio contenuto viene rimosso.
  * */
 void file_update(file_s **f, void *newContent, size_t newSize) {
+    pthread_mutex_lock(&(*f)->file_lock);
     if (newSize == 0) {   //se il file è vuoto
         free(newContent);
         return;
     }
     free((*f)->content);
+
+    pthread_mutex_lock(&server_data_lock);
     storage_left -= (*f)->size;
+    pthread_mutex_unlock(&server_data_lock);
 
     (*f)->content = newContent;
     (*f)->size = newSize;
+    pthread_mutex_unlock(&(*f)->file_lock);
 }
 
 /* Funzione che simula la chiusura del file f da parte del Client cpid.
  * */
 void client_closes_file(file_s **f, char *cpid) {
+    pthread_mutex_lock(&(*f)->file_lock);
     list_remove(&(*f)->pidlist, cpid, NULL);
-
+    pthread_mutex_unlock(&(*f)->file_lock);
 
     int *n = (int *) hash_getValue(tbl_has_opened, cpid);
     *n -= 1;
@@ -900,10 +1008,13 @@ void client_closes_file(file_s **f, char *cpid) {
 
 
 void clear_openedFiles(char *key, void *value, bool *exit, void *cpid) {
+
     file_s *f = (file_s *) value;
+    pthread_mutex_lock(&f->file_lock);
     if (file_is_opened_by(f, (char *) cpid)) {
         client_closes_file(&f, (char *) cpid);
     }
+    pthread_mutex_lock(&f->file_lock);
 
     //per togliere il warning "parameter never used"
     key = key;

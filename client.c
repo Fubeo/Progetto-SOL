@@ -60,13 +60,21 @@ void exit_function();
 int closeConnection(const char *sockname);
 static void *thread_function(void *abs_t);
 
+int close_file(const char *pathname);
+
+// -w e -W
 int open_file(char *pathname, int flags);
 int write_file(const char *pathname, const char *dirname);
-int close_file(const char *pathname);
 void send_file_to_server(const char *backup_folder, char *file);
 
+// -R
 int readNFiles(int N, const char *dirname);
+
+// -r
 int readFile(const char *pathname, void **buf, size_t *size);
+
+// -c
+int removeFile(const char *pathname);
 
 
 int main(int argc, char *argv[]){
@@ -82,7 +90,6 @@ int main(int argc, char *argv[]){
   }
 
   if (sd != -1) close(sd);
-  fprintf(stdout, "CONNESSIONE CHIUSA\n");
 }
 
 void print_commands() {
@@ -157,7 +164,6 @@ int open_connection(const char *sockname, int msec, const struct timespec abstim
     errno=0;
     sd = socket(AF_UNIX, SOCK_STREAM, 0);
 
-        fprintf(stdout, "ORA MI CONNETTO A %s\n", sockname);
     struct sockaddr_un sa;
     strcpy(sa.sun_path, sockname);
     sa.sun_family = AF_UNIX;
@@ -264,9 +270,7 @@ int closeConnection(const char *sockname) {
 
 void execute_options(int argc, char *argv[], int sd){
   int opt, errcode;
-  while ((opt = getopt(argc, argv, ":h:w:W:r:R::c:")) != -1) {
-
-      	fprintf(stdout, "OPERAZIONE RICHIESTA: %c \n\n\n", opt);
+  while ((opt = getopt(argc, argv, ":h:w:W:r:R:c:")) != -1) {
 
     switch (opt) {
       case 'h': {
@@ -315,7 +319,6 @@ void execute_options(int argc, char *argv[], int sd){
 
         str_clearArray(&array, n);
         //str_clearArray(&files, count);
-        fprintf(stdout, "ESCO CORRETTAMENTE DA w\n");
         break;
       }
 
@@ -396,6 +399,22 @@ void execute_options(int argc, char *argv[], int sd){
         break;
       }
 
+      case 'c': {
+        char **files = NULL;
+        int n = str_split(&files, optarg, ",");
+        for (int i = 0; i < n; i++) {
+          if (removeFile(files[i]) != 0) {
+            errcode = errno;
+            pcode(errcode, files[i]);
+            perr( "RemoveFile: error occurred on file %s\n", files[i]);
+          } else if(print_all){
+            psucc("File %s successfully removed\n\n", files[i]);
+          }
+          usleep(sleep_between_requests * 1000);
+        }
+        str_clearArray(&files, n);
+        break;
+      }
 
       default: {
         printf("The requested operation is not supported\n");
@@ -408,7 +427,7 @@ void execute_options(int argc, char *argv[], int sd){
 
 void send_file_to_server(const char *backup_folder, char *file) {
     int errcode;
-    if(print_all) printf("Invio di \n%s\n", file);
+    if(print_all) printf("Sending \n%s\n", file);
     if (open_file(file, O_CREATE) != 0) {
         pcode(errno, file);
         return;
@@ -472,7 +491,6 @@ int open_file(char *pathname, int flags) {
 
           //attendo una sua risposta
           response = (int)receiveInteger(sd);
-          fprintf(stdout, "\n\n\n\nRESPONSE: %d\n\n\n", response);
 
           if(response == S_STORAGE_FULL){
               while ((int) receiveInteger(sd)!=EOS_F){
@@ -737,4 +755,22 @@ int readFile(const char *pathname, void **buf, size_t *size) {
     free(request);
     errno=response;
     return -1;
+}
+
+int removeFile(const char *pathname) {
+    errno=0;
+
+    if(pathname==NULL)
+        return 0;
+
+    char *request = str_concat("rm:", pathname);
+    sendn(sd, request, str_length(request));
+    int status = (int)receiveInteger(sd);
+
+    if(status != 0){
+        errno=status;
+        return -1;
+    }
+    free(request);
+    return 0;
 }

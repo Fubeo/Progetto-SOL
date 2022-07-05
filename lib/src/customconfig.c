@@ -34,7 +34,8 @@ void settings_default(settings* s){
     s->N_WORKERS = 5;
     s->MAX_STORAGE = 209715200;
     s->MAX_STORABLE_FILES = 100;
-    s->SOCK_PATH = str_create("mysock");
+    s->SOCK_PATH = str_create("tmp/serversock.sk");
+    s->PRINT_LOG = 1;
 }
 
 void setConfigfor(settings *s, char *key, char *value) {
@@ -75,6 +76,18 @@ void setConfigfor(settings *s, char *key, char *value) {
         free(s->SOCK_PATH);
         char *new_path = str_clean(value);
         s->SOCK_PATH = str_create(new_path);
+    } else if(str_equals(key, "PRINT_LOG")){
+        if (str_toInteger(&converted_v, value) != 0) {
+            fprintf(stderr, "Error on parsing [%s]: default value set\n", key);
+            return;
+        }
+        if(converted_v != 0 && converted_v != 1 && converted_v != 2){
+            fprintf(stderr, "PRINT_LOG option must be 0, 1 or 2. See the documentation\n"
+                            "Default value set\n");
+            return;
+        }
+
+        s->PRINT_LOG = converted_v;
     }
 }
 
@@ -92,7 +105,7 @@ void settings_load(settings *s, char *path) {
     }
 
     if(s->SOCK_PATH==NULL){
-        s->SOCK_PATH= str_create("./socket.sk");
+        s->SOCK_PATH= str_create("./tmp/serversock.sk");
     }
 
     char **array = NULL;
@@ -123,6 +136,9 @@ void settings_print(settings s) {
 
     fprintf(stdout, "N_WORKERS:\t\t\t\t");
     printf("%u\n", s.N_WORKERS);
+
+    fprintf(stdout, "PRINT_LOG:\t\t\t\t");
+    printf("%d\n", s.PRINT_LOG);
 
     fprintf(stdout, "SOCK_PATH:\t\t\t\t");
     printf("%s\n", s.SOCK_PATH);

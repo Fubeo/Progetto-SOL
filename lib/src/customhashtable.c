@@ -5,7 +5,8 @@
 #include <pthread.h>
 #include "../customhashtable.h"
 #include "../customerrno.h"
-pthread_mutex_t table_lock=PTHREAD_MUTEX_INITIALIZER;
+
+pthread_mutex_t table_lock = PTHREAD_MUTEX_INITIALIZER;
 
 int hash(char *str, int t_size) {
     int hash, i;
