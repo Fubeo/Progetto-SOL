@@ -1,6 +1,6 @@
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/select.h>
@@ -551,7 +551,7 @@ void removeFile(int client, char *request) {
 
     // Aggiorno i dati del server
     pthread_mutex_lock(&server_data_lock);
-    storage_left++;
+    storable_files_left++;
     storage_left += f->size;
     if (storage_left > config.MAX_STORAGE) {
       storage_left = config.MAX_STORAGE;

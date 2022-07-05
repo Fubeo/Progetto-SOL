@@ -1,11 +1,11 @@
-SHELL      		= /bin/bash
-CC         		= gcc
-INCLUDES   		= -I./lib/*.h
-LIBS       		= -lpthread
-SERVER_OUT 		= ./out/server
-CLIENT_OUT 		= ./out/client
-FLAGS					= -Wall #-std=c99
-VALGRIND_FLAGS = 	--leak-check=full
+SHELL      				= /bin/bash
+CC         				= gcc
+INCLUDES   				= -I./lib/*.h
+LIBS       				= -lpthread
+SERVER_OUT 				= ./out/server
+CLIENT_OUT 				= ./out/client
+FLAGS							= -Wall -std=c99 #-D_POSIX_C_SOURCE=199506L
+VALGRIND_FLAGS 		= --leak-check=full
 
 .DEFAULT_GOAL := all
 
