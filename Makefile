@@ -5,6 +5,8 @@ LIBS       		= -lpthread
 SERVER_OUT 		= ./out/server
 CLIENT_OUT 		= ./out/client
 FLAGS					= -Wall #-std=c99
+VALGRIND_FLAGS = 	--leak-check=full
+
 .DEFAULT_GOAL := all
 
 server_lib = 	./lib/src/customsocket.c			\
@@ -35,17 +37,18 @@ client: client.c
 
 all: 		server client
 
-test1: server client
-	clear
-	valgrind --leak-check=full --show-leak-kinds=all $(SERVER_OUT) &
-	sh script/test1.sh
-	@killall -TERM -w memcheck-amd64-
-	@printf "\nTest1 terminated\n"
+test1: server client clean
+		clear
+		valgrind $(VALGRIND_FLAGS) $(SERVER_OUT) &
+		sh script/test1.sh
+		@killall -TERM -w memcheck-amd64-
+		@printf "\ntest1 terminato\n"
 
 testserver: server
 	clear
-	valgrind --leak-check=full --show-leak-kinds=all $(SERVER_OUT)
-	#@killall -TERM -w memcheck-amd64-
+	valgrind $(VALGRIND_FLAGS) $(SERVER_OUT)
+	#$(SERVER_OUT)
+	@killall -INT -w server
 	@printf "\nTestserver terminated\n"
 
 testclient: client
@@ -53,3 +56,6 @@ testclient: client
 	sh script/testclient.sh
 	#@killall -TERM -w memcheck-amd64-
 	@printf "\nTestclient terminated\n"
+
+clean :
+	@rm -f ./test/download/* ./test/backup/* ./tmp/*.sk

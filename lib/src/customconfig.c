@@ -92,7 +92,7 @@ void settings_load(settings *s, char *path) {
     }
 
     if(s->SOCK_PATH==NULL){
-        s->SOCK_PATH= str_create("mysock");
+        s->SOCK_PATH= str_create("./socket.sk");
     }
 
     char **array = NULL;
@@ -100,14 +100,14 @@ void settings_load(settings *s, char *path) {
     while ((line = file_readline(c)) != NULL) {
         char* cleaned_line = str_clean(line);
         if (!str_starts_with(cleaned_line, "#") && !str_is_empty(cleaned_line)) {
-            int n=str_splitn(&array, cleaned_line, "=#", 3);
+            int n = str_splitn(&array, cleaned_line, "=#", 3);
             setConfigfor(s, array[0], array[1]);
 
             str_clearArray(&array,n);
         }
         free(line);
     }
-
+    fclose(c);
 }
 
 void settings_free(settings *s) {
@@ -118,10 +118,10 @@ void settings_print(settings s) {
     fprintf(stdout, "MAX_STORABLE_FILES:\t\t\t");
     printf("%u\n", s.MAX_STORABLE_FILES);
 
-    fprintf(stdout, "MAX_STORAGE (in bytes):\t\t");
+    fprintf(stdout, "MAX_STORAGE (in bytes):\t\t\t");
     printf("%lu\n", s.MAX_STORAGE);
 
-    fprintf(stdout, "N_WORKERS:\t\t\t");
+    fprintf(stdout, "N_WORKERS:\t\t\t\t");
     printf("%u\n", s.N_WORKERS);
 
     fprintf(stdout, "SOCK_PATH:\t\t\t\t");

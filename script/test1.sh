@@ -1,14 +1,6 @@
-sleep 3
+sleep 3 #per dare tempo al server di avviarsi
+real_path=$(realpath ./test)
+path_test1="${real_path}/test1/"
 
-k=0
-
-./out/client
-PID[k]=$!
-((k++))
-./out/client
-PID[k]=$!
-((k++))
-
-for((i=0;i<k;++i)); do
-    wait ${PID[i]}
-done
+args="-f./tmp/serversock.sk -w${path_test1}"
+./out/client ${args}
