@@ -16,6 +16,7 @@
 #include "./lib/customerrno.h"
 #include "./lib/customfile.h"
 
+
 #define SERVER_PATH "./tmp/serversock.sk"
 #define BUFFER_LENGTH    250
 
@@ -62,9 +63,9 @@ int closeConnection(const char *sockname);
 static void *thread_function(void *abs_t);
 
 int close_file(const char *pathname);
+int open_file(char *pathname, int flags);
 
 // -w e -W
-int open_file(char *pathname, int flags);
 int write_file(const char *pathname, const char *dirname);
 void send_file_to_server(const char *backup_folder, char *file);
 
@@ -96,15 +97,14 @@ int main(int argc, char *argv[]){
 void print_commands() {
     printf("\t-h \t\t\tPrints this helper.\n");
     printf("\t-f <sock> \t\tSets socket name to <sock>. \033[0;31m This option must be set once and only once. \033[0m\n");
-    printf("\t-p \t\t\tIf set, every operation will be printed to stdout. \033[0;31m This option must be set at most once. \033[0m\n");
-    printf("\t-t <time> \t\tSets the waiting time (in milliseconds) between requests. Default is 0.\n");
-    printf("\t-a <time> \t\tSets the time (in seconds) after which the app will stop attempting to connect to server. Default value is 5 seconds. \033[0;31m This option must be set at most once. \033[0m\n");
     printf("\t-w <dir>[,<num>] \tSends the content of the directory <dir> (and its subdirectories) to the server. If <num> is specified, at most <num> files will be sent to the server.\n");
     printf("\t-W <file>{,<files>}\tSends the files passed as arguments to the server.\n");
-    printf("\t-D <dir>\t\tWrites into directory <dir> all the files expelled by the server app. \033[0;31m This option must follow one of -w or -W. \033[0m\n");
-    printf("\t-r <file>{,<files>}\tReads the files specified in the argument list from the server.\n");
+    printf("\t-D <dir>\t\tWrites into directory <dir> all the files expelled by the server. \033[0;31m This option must follow one of -w or -W. \033[0m\n");
     printf("\t-R[<num>] \t\tReads <num> files from the server. If <num> is not specified, reads all files from the server. \033[0;31m There must be no space bewteen -R and <num>.\033[0m\n");
+    printf("\t-r <file>{,<files>}\tReads the files specified in the argument list from the server.\n");
     printf("\t-d <dir> \t\tWrites into directory <dir> the files read from server. If it not specified, files read from server will be lost. \033[0;31m This option must follow one of -r or -R. \033[0m\n");
+    printf("\t-t <time> \t\tSets the waiting time (in milliseconds) between requests. Default is 0.\n");
+    printf("\t-p \t\t\tIf set, every operation will be printed to stdout. \033[0;31m This option must be set at most once. \033[0m\n");
     printf("\t-l <file>{,<files>} \tLocks all the files given in the file list.\n");
     printf("\t-u <file>{,<files>} \tUnlocks all the files given in the file list.\n");
     printf("\t-c <file>{,<files>} \tDeletes from server all the files given in the file list, if they exist.\n");
@@ -271,7 +271,7 @@ int closeConnection(const char *sockname) {
 
 void execute_options(int argc, char *argv[], int sd){
   int opt, errcode;
-  while ((opt = getopt(argc, argv, ":h:w:W:r:R:c:")) != -1) {
+  while ((opt = getopt(argc, argv, ":h:W:w:R:r:c:")) != -1) {
 
     switch (opt) {
       case 'h': {
@@ -348,9 +348,8 @@ void execute_options(int argc, char *argv[], int sd){
           size_t size;
           for (int i = 0; i < n; i++) {
               fprintf(stdout, "FILE: %s\n", files[i]);
-              if(open_file(files[i], O_OPEN) == 0) {
-                  fprintf(stdout, "FILE APERTO\n");           // apro il file
-                  if (readFile(files[i], &buff, &size) != 0) {    // lo leggo
+              if(open_file(files[i], O_OPEN) == 0) { // Apertura del file
+                  if (readFile(files[i], &buff, &size) != 0) {    // Lettura del file
                       perr("ReadFile: Errore nel file %s\n", files[i]);
                       errcode = errno;
                       pcode(errcode, files[i]);
@@ -446,85 +445,131 @@ void send_file_to_server(const char *backup_folder, char *file) {
 }
 
 int open_file(char *pathname, int flags) {
-    errno=0;
+    errno = 0;
 
-    if(pathname==NULL){
-        return 0;
-    }
+    if(pathname == NULL){ return 0; }
 
     int response;
     char* client_pid=str_long_toStr(getpid());
 
     switch (flags) {
         case O_OPEN : {
-            char *cmd = str_concatn("o:",pathname,":", client_pid, NULL);
+          char *cmd = str_concatn("o:",pathname,":", client_pid, NULL);
 
-            // invio il comando al server
-            sendn(sd, cmd, str_length(cmd));
+          // invio il comando al server
+          sendn(sd, cmd, str_length(cmd));
 
-            // attendo una sua risposta
-            response = (int)receiveInteger(sd);
-            fprintf(stdout, "FILE APERTO\n");
+          // attendo una sua risposta
+          response = (int)receiveInteger(sd);
 
-            if (response != 0) {
-                errno=response;
-                return -1;
-            }
-            free(cmd);
-            break;
+          free(cmd);
+          if (response != 0) {
+            errno=response;
+            return -1;
+          }
+          break;
         }
         case O_CREATE : {
-          fprintf(stdout, "pathname = %s\n", pathname);
-
+          // Apro il file
           if(pathname == NULL){
-              errno = FILE_NOT_FOUND;
-              perr("FILE NOT FOUND");
-              return -1;
+            errno = FILE_NOT_FOUND;
+            perr("FILE NOT FOUND");
+            return -1;
           }
-          FILE* file = fopen(pathname,"rb");
+          FILE* file = fopen(pathname, "rb");
           size_t fsize = file_getsize(file);
-
           char *cmd = str_concatn("c:", pathname, ":", client_pid, NULL);
 
-          //invio il comando al server
-          sendn(sd, (char*)cmd, str_length(cmd));  //voglio creare un file
-          sendInteger(sd, fsize);                  //che inizialmente ha grandezza fsize
+          // Invio del comando al server
+          sendn(sd, (char*)cmd, str_length(cmd));
+          sendInteger(sd, fsize);
 
-          //attendo una sua risposta
+          fclose(file);
+
+          // Attesa della risposta del server
           response = (int)receiveInteger(sd);
 
           if(response == S_STORAGE_FULL){
-              while ((int) receiveInteger(sd)!=EOS_F){
-                  char* s= receiveStr(sd);
-                  pwarn("WARNING: Il file %s è stato espulso\n"
-                        "Aumentare la capacità del Server per poter memorizzare più file!\n\n", (strrchr(s,'/')+1));
-                  free(s);
-              }
-              response = (int)receiveInteger(sd);
+            while ((int) receiveInteger(sd)!=EOS_F){
+              char* s= receiveStr(sd);
+              pwarn("WARNING: Il file %s è stato espulso\n"
+                    "Aumentare la capacità del Server per poter memorizzare più file!\n\n", (strrchr(s,'/')+1));
+              free(s);
+            }
           }
+
           if(response == SFILE_ALREADY_EXIST){
             errno = SFILE_ALREADY_EXIST;
-            pwarn("WARNING: Il file %s e' gia' presente sul server!\n\n");
+            pwarn("WARNING: file %s is already stored on the server!\n\n");
             return -1;
           }
 
           if (response != S_SUCCESS) {
-              free(cmd);
-              free(pathname);
-              free(client_pid);
-              errno=response;
+            free(cmd);
+            free(pathname);
+            free(client_pid);
+            errno = response;
 
-              return -1;
+            return -1;
           }
-          free(cmd);
 
+          free(cmd);
           break;
         }
 
         case O_LOCK : {
-            printf("not implemented yet...\n");
-            response = -1;
+          char *cmd = str_concatn("co:", pathname, ":", client_pid, NULL);
+          // Invio del comando al server
+          sendn(sd, (char*)cmd, str_length(cmd));
+
+          response = (int)receiveInteger(sd);
+          if(response == SFILE_ALREADY_EXIST){    // Apri il file in modalita' locked
+            response = (int)receiveInteger(sd);
+            if(response == S_SUCCESS){
+              errno=response;
+              return -1;
+            }
+          } else if(response == SFILE_NOT_FOUND){ // Crea il file in modalita' locked
+
+            if(pathname == NULL){
+              errno = FILE_NOT_FOUND;
+              sendInteger(sd, SFILE_NOT_FOUND);
+              perr("FILE NOT FOUND");
+              return -1;
+            }
+            sendInteger(sd, S_SUCCESS);
+
+            FILE* file = fopen(pathname, "rb");
+            size_t fsize = file_getsize(file);
+
+            sendInteger(sd, fsize);
+
+            response = (int)receiveInteger(sd);
+
+            if(response == S_STORAGE_FULL){
+              while ((int) receiveInteger(sd)!=EOS_F){
+                char* s = receiveStr(sd);
+                pwarn("WARNING: Il file %s è stato espulso\n"
+                      "Aumentare la capacità del Server per poter memorizzare più file!\n\n", (strrchr(s,'/')+1));
+                free(s);
+              }
+            }
+
+            if (response != S_SUCCESS) {
+              free(cmd);
+              free(pathname);
+              free(client_pid);
+              errno = response;
+
+              return -1;
+            }
+
+            free(cmd);
             break;
+          }
+
+          response = -1;
+          break;
         }
 
         default: {
@@ -593,8 +638,6 @@ int write_file(const char *pathname, const char *dirname) {
 
 
     sendn(sd, request, str_length(request));
-
-    fprintf(stdout, "\n\nINVIATI: \n REQ -> %s\n LEN -> %d\n\n\n", request, str_length(request));
 
     if(sendfile(sd, pathname)==-1){
         perr("Malloc error\n");
@@ -746,12 +789,19 @@ int readFile(const char *pathname, void **buf, size_t *size) {
 
     //attendo una risposta
     int response = (int)receiveInteger(sd);
-    if (response == 0) {    //se il file esiste
+
+
+
+    if (response == S_SUCCESS) {    //se il file esiste
         receivefile(sd,buf,size);
         free(request);
         free(client_pid);
         return 0;
     }
+    if(response == SFILE_NOT_FOUND && print_all) perr("ERROR: Requested file is not storad in the server");
+    if(response == SFILE_NOT_OPENED && print_all) perr("ERROR: Requested file is not opened by this client");
+    if(response == SFILE_CURRENTLY_LOCKED && print_all) perr("ERROR: Requested file is currently locked by another client");
+
     free(client_pid);
     free(request);
     errno=response;

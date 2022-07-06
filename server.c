@@ -21,6 +21,10 @@
 #include "./lib/customhashtable.h"
 #include "./lib/customsortedlist.h"
 
+#define O_OPEN 0
+#define O_CREATE 1
+#define O_LOCK 2
+
 #define CONFIG "./config/test1.ini"
 
 #define MASTER_WAKEUP_SECONDS 3
@@ -33,6 +37,9 @@ typedef struct {
     size_t size;
     list *pidlist;
     pthread_mutex_t file_lock;
+
+    pthread_mutex_t o_lock;
+    char* locked_by;
 } file_s;
 
 // =============================================================================
@@ -64,7 +71,7 @@ size_t n_cache_replacements = 0;
 // =============================================================================
 
 // ===================== Gestione funzioni base del server =====================
-void init_server(char *config_path);
+void init_server(int argc, char *argv[]);
 void *worker_function();
 void closeConnection(int client, char *cpid);
 void *stop_server(void *argv);
@@ -74,13 +81,14 @@ void close_server();
 void write_file(int fd_client, char *request);
 void createFile(int fd_client, char *request);
 void openFile(int client, char *request);
+void openO_LOCK(int client, char *request);
 void removeFile(int client, char *request);
 void closeFile(int fd_client, char *request);
 void readFile(int fd_client, char *request);
 void readNFile(int client, char *request);
 void send_nfiles(char *key, void *value, bool *exit, void *args);
 void appendFile(int client, char *request);
-
+void unlockFile(int client, char *request);
 
 // ====================== Gestione storage del server ==========================
 void free_space(int fd_client, char option, size_t fsize);
@@ -98,11 +106,11 @@ void client_closes_file(file_s **f, char *cpid);
 void print_statistics();
 void print_files(char *key, void *value, bool *exit, void *argv);
 
-int main() {
+int main(int argc, char *argv[]) {
   // Dichiarazione socket
   int fd_sk = -1;
 
-  init_server(CONFIG);
+  init_server(argc, argv);
 
   // creo una lista per inserire i socket
   sorted_list *fd_list = sortedlist_create();
@@ -249,9 +257,24 @@ int main() {
 // =============================================================================
 
 
-void init_server(char *config_path) {
+void init_server(int argc, char *argv[]) {
+
+  char *config_path = NULL;
+  if (argc == 2) {
+      if (str_starts_with(argv[1], "-c")) {
+          char *cmd = (argv[1]) += 2;
+          config_path = realpath(cmd, NULL);
+          if (config_path == NULL) {
+              fprintf(stderr, "File config non trovato!\n"
+                              "Verranno usate le impostazioni di Default\n\n");
+          }
+      }
+  } else if (argc > 2) {
+      pwarn("ATTENZIONE: comando -c inserito non valido\n\n");
+  }
   // lettura file config
   settings_load(&config, config_path);
+  free(config_path);
 
   // creazione coda di client
   queue_clients = queue_create();
@@ -303,6 +326,10 @@ void *worker_function(){
             cmd = str_cut(request, 3, str_length(request) - 3);
             closeFile(fd_client, cmd);
             free(cmd);
+          } else if (request[1] == 'o') {  // Richiesta apertura O_LOCK
+            cmd = str_cut(request, 3, str_length(request) - 3);
+            openO_LOCK(fd_client, cmd);
+            free(cmd);
           } else {
             cmd = str_cut(request, 2, str_length(request) - 2);
             createFile(fd_client, cmd);
@@ -343,6 +370,12 @@ void *worker_function(){
           break;
         }
 
+        case 'u':{
+          char *cmd = str_cut(request, 2, str_length(request) - 2);
+          unlockFile(fd_client, cmd);
+          free(cmd);
+          break;
+        }
 
         case 'e': {
           char *cmd = str_cut(request, 2, str_length(request) - 2);
@@ -403,8 +436,6 @@ void *stop_server(void *argv) {
     sigaddset(&set, SIGHUP);
 
 
-
-
     pthread_sigmask(SIG_SETMASK, &set, NULL);
 
     psucc("SIGWAIT Thread avviato\n\n");
@@ -459,16 +490,11 @@ void createFile(int fd_client, char *request) {
     free_space(fd_client, 'c', 0);
     pwarn("Impossibile espellere file\n", fd_client);
     perr("Richiesta non eseguita\n");
-    sendInteger(fd_client, S_STORAGE_FULL);
 
   } else {
     assert(hash_containsKey(tbl_has_opened, cpid));
 
-    fprintf(stdout, "filepath arrivato:\n____%s/\n", filepath);
-
     file_s *f = file_init(filepath);//creo un nuovo file
-
-    fprintf(stdout, "file creato di dimensione %ld nome %s\n", f->size, f->path);
 
     if (f == NULL) {
       sendInteger(fd_client, MALLOC_ERROR);
@@ -479,8 +505,6 @@ void createFile(int fd_client, char *request) {
 
     storable_files_left--;										// aggiorno il numero di file memorizzabili
     list_insert(&storage_fifo, filepath, f);  // e infine lo aggiungo alla coda fifo
-
-    printf("FILE CREATO CON SUCCESSO\n\n");
 
     sendInteger(fd_client, S_SUCCESS);			// notifico il client dell'esito positivo dell'operazione
   }
@@ -507,7 +531,7 @@ void openFile(int client, char *request) {
     }
 
     file_s *f = hash_getValue(tbl_file_path, filepath);
-    if (file_is_opened_by(f, cpid)) { //controllo se il file è già stato aperto dal Client
+    if (file_is_opened_by(f, cpid)) { // controllo se il file è già stato aperto dal Client
 
             pwarn("Il client %d ha tentato di aprire un file già aperto\n", client);
 
@@ -523,9 +547,110 @@ void openFile(int client, char *request) {
     sendInteger(client, S_SUCCESS);
 
 
-        psucc("Il client %d ha aperto il file %s\n", client, (strrchr(filepath,'/')+1));
+        psucc("Client %d opened file %s\n", client, (strrchr(filepath,'/')+1));
 
     str_clearArray(&array, n);
+}
+
+void openO_LOCK(int fd_client, char *request){
+  char **array = NULL;
+  int n = str_split(&array, request, ":");
+  char *filepath = array[0];  // path del file inviato dal Client
+  char *cpid = array[1];      // pid del client
+
+  if (hash_containsKey(tbl_file_path, filepath)) { // Se il file è presente nello storage
+    sendInteger(fd_client, SFILE_ALREADY_EXIST);
+
+    file_s *f = hash_getValue(tbl_file_path, filepath);
+    if (file_is_opened_by(f, cpid)) { // controllo se il file è già stato aperto dal Client
+      if (config.PRINT_LOG == 2) {
+        pwarn("Client %d tried to open a file that he has already opened\n", fd_client);
+      }
+
+      if (config.PRINT_LOG == 1){
+        perr("Request not executed");
+      }
+      sendInteger(fd_client, SFILE_ALREADY_OPENED);
+      str_clearArray(&array, n);
+      return;
+    }
+
+    file_open(&f, cpid);
+
+    if(f->locked_by != NULL){
+      if(config.PRINT_LOG == 2) fprintf(stdout, "Client %s waiting to open file %s in locked mode\n", cpid, f->path);
+    }
+    pthread_mutex_lock(&f->o_lock);
+    f->locked_by = cpid;
+
+    sendInteger(fd_client, S_SUCCESS);
+
+    if (config.PRINT_LOG == 1 || config.PRINT_LOG == 2) {
+      psucc("Client %d opened file %s in locked mode\n", fd_client, (strrchr(filepath,'/')+1));
+    }
+
+    str_clearArray(&array, n);
+
+  } else {                                        // Se, invece, non e' presente
+    sendInteger(fd_client, SFILE_NOT_FOUND);
+
+    int response = receiveInteger(fd_client);
+    if(response == SFILE_NOT_FOUND){
+        if (config.PRINT_LOG == 2){
+            pwarn("Client %d tried to create a file that does not exist\n", fd_client);
+        }
+        if (config.PRINT_LOG == 1){
+            perr("Request not executed\n");
+        }
+        str_clearArray(&array, n);
+        return;
+    }
+    size_t fsize = receiveInteger(fd_client);
+
+    if (fsize > config.MAX_STORAGE) { //se il file è troppo grande
+      pwarn("Il client %d ha tentato di mettere un file troppo grande.\n", fd_client);
+      perr("Richiesta non eseguita.\n");
+      sendInteger(fd_client, SFILE_TOO_LARGE);
+
+    } else if (storable_files_left == 0) {
+      pwarn("Rilevata CAPACITY MISS\n", fd_client);
+
+      sendInteger(fd_client, S_STORAGE_FULL);
+      free_space(fd_client, 'c', 0);
+      pwarn("Impossibile espellere file\n", fd_client);
+      perr("Richiesta non eseguita\n");
+
+    } else {
+      assert(hash_containsKey(tbl_has_opened, cpid));
+
+      file_s *f = file_init(filepath);//creo un nuovo file
+
+      if (f == NULL) {
+        sendInteger(fd_client, MALLOC_ERROR);
+        return;
+      }
+
+      hash_insert(&tbl_file_path, filepath, f);	// lo memorizzo
+      file_open(&f, cpid); 											// lo apro
+
+
+      storable_files_left--;										// aggiorno il numero di file memorizzabili
+      list_insert(&storage_fifo, filepath, f);  // lo aggiungo alla coda fifo
+
+      if(f->locked_by != NULL){
+        if(config.PRINT_LOG == 2) fprintf(stdout, "Client %s waiting to open file %s in locked mode\n", cpid, f->path);
+      }
+      pthread_mutex_lock(&f->o_lock);
+      f->locked_by = cpid;
+
+
+      sendInteger(fd_client, S_SUCCESS);			// notifico il client dell'esito positivo dell'operazione
+    }
+
+
+  }
+  str_clearArray(&array, n);
+
 }
 
 void removeFile(int client, char *request) {
@@ -726,6 +851,14 @@ void readFile(int fd_client, char *request) {
         return;
     }
 
+    if(file->locked_by != NULL){
+      if(strcmp(file->locked_by, cpid) != 0){
+        sendInteger(fd_client, SFILE_CURRENTLY_LOCKED);
+        str_clearArray(&array, n);
+        return;
+      }
+    }
+
     sendInteger(fd_client, S_SUCCESS);
 
     sendn(fd_client, file->content, file->size);
@@ -747,7 +880,6 @@ void readNFile(int fd_client, char *request) {
     hash_iteraten(tbl_file_path, &send_nfiles, (void *) &fd_client, n);
     sendInteger(fd_client, EOS_F);
 }
-
 
 void send_nfiles(char *key, void *value, bool *exit, void *args) {
     int client = *((int*) args);
@@ -851,6 +983,11 @@ void appendFile(int client, char *request) {
     }
 }
 
+void unlockFile(int client, char *request){
+
+}
+
+
 // ====================== Gestione storage del server ==========================
 
 // Funzione di rimozione dei file in caso di Capacity Misses.
@@ -925,13 +1062,16 @@ void file_destroy(void *f) {
     free(file->content);
     free(file->path);
     list_destroy(&file->pidlist, NULL);
+    free(file->locked_by);
     free(file);
 }
 
 /* Funzione che simula l apertura del file f da parte del client cpid.
  * */
 void file_open(file_s **f, char *cpid) {
+    pthread_mutex_lock(&(*f)->file_lock);
     list_insert(&(*f)->pidlist, cpid, NULL);
+    pthread_mutex_unlock(&(*f)->file_lock);
 
     int *n = (int *) hash_getValue(tbl_has_opened, cpid);
     *n = *n + 1;
@@ -957,6 +1097,8 @@ static file_s *file_init(char *path) {
     file->size = 0;
     file->pidlist = list_create();
     pthread_mutex_init ( &(file->file_lock), NULL);
+    pthread_mutex_init ( &(file->o_lock), NULL);
+    file->locked_by = NULL;
     return file;
 }
 
@@ -1014,7 +1156,7 @@ void clear_openedFiles(char *key, void *value, bool *exit, void *cpid) {
     if (file_is_opened_by(f, (char *) cpid)) {
         client_closes_file(&f, (char *) cpid);
     }
-    pthread_mutex_lock(&f->file_lock);
+    pthread_mutex_unlock(&f->file_lock);
 
     //per togliere il warning "parameter never used"
     key = key;
