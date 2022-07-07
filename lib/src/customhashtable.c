@@ -221,3 +221,22 @@ int hash_deleteKey(hash_table** table, char *key, void (*delete_value)(void* )) 
 
     return true;
 }
+
+void hash_print_all(hash_table* table) {
+    pthread_mutex_lock(&(table)->lock);
+    bool exit = false;
+    for (int i = 0; i < table->max_size; i++) {
+        if (table->buckets[i] != NULL) {
+            list_node *head = table->buckets[i]->head;
+            while (head != NULL && !exit) {
+                fprintf(stdout, "%s %p\n", head->key, head->value);
+                head = head->next;
+            }
+
+            if(exit)
+                break;
+        }
+    }
+    pthread_mutex_unlock(&(table)->lock);
+    fprintf(stderr, "----------\n");
+}

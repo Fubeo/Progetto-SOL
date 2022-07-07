@@ -18,7 +18,8 @@ char* file_readline(FILE* file){
     }
 
     str_remove_new_line(&line);
-    char* ret=str_create(line);
+    char *ret = malloc(str_length(line)*sizeof(char)+1);
+    strcpy(ret, line);
     return ret;
 }
 

@@ -17,9 +17,6 @@
 #include "./lib/customfile.h"
 
 
-#define SERVER_PATH "./tmp/serversock.sk"
-#define BUFFER_LENGTH    250
-
 #define O_OPEN 0
 #define O_CREATE 1
 #define O_LOCK 2
@@ -62,8 +59,8 @@ void exit_function();
 int closeConnection(const char *sockname);
 static void *thread_function(void *abs_t);
 
-int close_file(const char *pathname);
-int open_file(char *pathname, int flags);
+int closeFile(const char *pathname);
+int openFile(char *pathname, int flags);
 
 // -w e -W
 int write_file(const char *pathname, const char *dirname);
@@ -77,6 +74,9 @@ int readFile(const char *pathname, void **buf, size_t *size);
 
 // -c
 int removeFile(const char *pathname);
+
+// -u
+int unlockFile(const char*pathname);
 
 
 int main(int argc, char *argv[]){
@@ -251,17 +251,17 @@ int closeConnection(const char *sockname) {
     int status = (int)receiveInteger(sd);
 
     if(status != S_SUCCESS){
-        if(status==SFILES_FOUND_ON_EXIT){
-            pcode(status, NULL);
-        }
+      if(status == SFILES_FOUND_ON_EXIT){
+        if(print_all) pcolor(CYAN, "Server will close files still opened\n");
+      }
     }
 
     if(close(sd) != 0){
-        perr("Errore nella chiusura del Socket\n"
+        perr("Error closing socket\n"
              "Codice errore: %s\n\n", strerror(errno));
         return -1;
     }
-    connected=false;
+    connected = false;
     free(sockfilename);
     //per rimuovere i warning
     pcolor(STANDARD, "");
@@ -271,7 +271,7 @@ int closeConnection(const char *sockname) {
 
 void execute_options(int argc, char *argv[], int sd){
   int opt, errcode;
-  while ((opt = getopt(argc, argv, ":h:W:w:R:r:c:")) != -1) {
+  while ((opt = getopt(argc, argv, ":h:W:w:R:r:c:u:")) != -1) {
 
     switch (opt) {
       case 'h': {
@@ -283,7 +283,7 @@ void execute_options(int argc, char *argv[], int sd){
         char **files = NULL;
         int n = str_split(&files, optarg, ",");
         for (int i = 0; i < n; i++) {
-          files[i] = realpath(files[i],NULL);
+          files[i] = realpath(files[i], NULL);
           send_file_to_server(backup_folder, files[i]);
           usleep(sleep_between_requests * 1000);
         }
@@ -348,7 +348,7 @@ void execute_options(int argc, char *argv[], int sd){
           size_t size;
           for (int i = 0; i < n; i++) {
               fprintf(stdout, "FILE: %s\n", files[i]);
-              if(open_file(files[i], O_OPEN) == 0) { // Apertura del file
+              if(openFile(files[i], O_OPEN) == 0) { // Apertura del file
                   if (readFile(files[i], &buff, &size) != 0) {    // Lettura del file
                       perr("ReadFile: Errore nel file %s\n", files[i]);
                       errcode = errno;
@@ -382,13 +382,8 @@ void execute_options(int argc, char *argv[], int sd){
                       }
                       free(buff);
                 }
-                if(close_file(files[i])!=0){
-                    perr("close_file: Errore nella chiusura del file %s\n", files[i]);
-                    errcode = errno;
-                    pcode(errcode, files[i]);
-                }
             }else{
-                perr("open_file: Errore nell apertura del file %s\n", files[i]);
+                perr("openFile: Errore nell apertura del file %s\n", files[i]);
                 errcode = errno;
                 pcode(errcode, files[i]);
               }
@@ -416,6 +411,18 @@ void execute_options(int argc, char *argv[], int sd){
         break;
       }
 
+      case 'u': {
+        char **files = NULL;
+        int n = str_split(&files, optarg, ",");
+        for (int i = 0; i < n; i++) {
+          files[i] = realpath(files[i], NULL);
+          unlockFile(files[i]);
+          usleep(sleep_between_requests * 1000);
+        }
+        str_clearArray(&files, n);
+        break;
+      }
+
       default: {
         printf("The requested operation is not supported\n");
         break;
@@ -428,7 +435,7 @@ void execute_options(int argc, char *argv[], int sd){
 void send_file_to_server(const char *backup_folder, char *file) {
     int errcode;
     if(print_all) printf("Sending \n%s\n", file);
-    if (open_file(file, O_CREATE) != 0) {
+    if (openFile(file, O_LOCK) != 0) {
         pcode(errno, file);
         return;
     }
@@ -441,10 +448,10 @@ void send_file_to_server(const char *backup_folder, char *file) {
         psucc("File \"%s\" successfully sent\n\n", strrchr(file, '/') + 1);
     }
 
-    close_file(file);
+
 }
 
-int open_file(char *pathname, int flags) {
+int openFile(char *pathname, int flags) {
     errno = 0;
 
     if(pathname == NULL){ return 0; }
@@ -469,6 +476,7 @@ int open_file(char *pathname, int flags) {
           }
           break;
         }
+
         case O_CREATE : {
           // Apro il file
           if(pathname == NULL){
@@ -492,8 +500,8 @@ int open_file(char *pathname, int flags) {
           if(response == S_STORAGE_FULL){
             while ((int) receiveInteger(sd)!=EOS_F){
               char* s= receiveStr(sd);
-              pwarn("WARNING: Il file %s è stato espulso\n"
-                    "Aumentare la capacità del Server per poter memorizzare più file!\n\n", (strrchr(s,'/')+1));
+              pwarn("WARNING: Il file %s has been removed\n"
+                    "Increase storage space to store more files!\n\n", (strrchr(s,'/')+1));
               free(s);
             }
           }
@@ -582,7 +590,7 @@ int open_file(char *pathname, int flags) {
     return response;
 }
 
-int close_file(const char *pathname) {
+int closeFile(const char *pathname) {
   errno = 0;
 
   if(pathname==NULL){
@@ -602,7 +610,6 @@ int close_file(const char *pathname) {
     errno=status;
     return -1;
   }
-  fprintf(stdout, "HO CHIUSO %s\n", pathname);
   return 0;
 }
 
@@ -649,8 +656,6 @@ int write_file(const char *pathname, const char *dirname) {
     //free(client_pid);
 
     int status = (int)receiveInteger(sd);
-
-    fprintf(stdout, "STATUS: %d\n\n", status);
 
     if(status == S_SUCCESS){
         return 0;
@@ -710,7 +715,6 @@ int write_file(const char *pathname, const char *dirname) {
 
     return 0;
 }
-
 
 int readNFiles(int N, const char *dirname) {
     errno=0;
@@ -800,7 +804,7 @@ int readFile(const char *pathname, void **buf, size_t *size) {
     }
     if(response == SFILE_NOT_FOUND && print_all) perr("ERROR: Requested file is not storad in the server");
     if(response == SFILE_NOT_OPENED && print_all) perr("ERROR: Requested file is not opened by this client");
-    if(response == SFILE_CURRENTLY_LOCKED && print_all) perr("ERROR: Requested file is currently locked by another client");
+    if(response == SFILE_LOCKED && print_all) perr("ERROR: Requested file is currently locked by another client");
 
     free(client_pid);
     free(request);
@@ -824,4 +828,39 @@ int removeFile(const char *pathname) {
     }
     free(request);
     return 0;
+}
+
+int unlockFile(const char*pathname){
+  char *client_pid = str_long_toStr(getpid());
+  char *cmd = str_concatn("u:", pathname, ":", client_pid, NULL);
+  sendn(sd, (char*)cmd, str_length(cmd));
+  free(cmd);
+
+  // Attesa della risposta del server
+  int response = (int)receiveInteger(sd);
+
+  if(response == SFILE_NOT_FOUND){
+    errno = SFILE_NOT_FOUND;
+    pwarn("WARNING: file %s does not exist on the server!\n\n", pathname);
+    return -1;
+  }
+
+  if(response == SFILE_NOT_LOCKED){
+    errno = SFILE_NOT_LOCKED;
+    pwarn("WARNING: file %s is not locked!\n\n", pathname);
+    return -1;
+  }
+
+  if(response == CLIENT_NOT_ALLOWED){
+    errno = CLIENT_NOT_ALLOWED;
+    pwarn("WARNING: file %s is locked by another client!\n\n", pathname);
+    return -1;
+  }
+
+  if(response == S_SUCCESS) {
+    if(print_all) psucc("File %s successfully unlocked\n", pathname);
+    return 0;
+  }
+
+  return -1;
 }

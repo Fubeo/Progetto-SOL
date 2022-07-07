@@ -27,7 +27,10 @@
 #define CONNECTION_REFUSED 22
 #define CONNECTION_ACCEPTED 23
 #define MALLOC_ERROR 24
-#define SFILE_CURRENTLY_LOCKED 25
+#define SFILE_LOCKED 25
+#define SFILE_NOT_LOCKED 26
+#define CLIENT_NOT_ALLOWED 27
+#define LOCK_ERROR 28
 
 #ifndef PROGETTO_CUSTOMERRNO_H
 #define PROGETTO_CUSTOMERRNO_H
@@ -74,13 +77,6 @@ static void pcode(int code, char* file) {
         case S_STORAGE_EMPTY : {
             printf(YEL "WARNING: Il Server non contiene file\n"
                    "Codice: S_STORAGE_EMPTY\n\n");
-            break;
-        }
-
-        case SFILES_FOUND_ON_EXIT : {
-            printf(YEL "WARNING: Alcuni file non sono stati chiusi.\n"
-                   "Il Server chiuderà i file per te, ma si prega di chiuderli una volta usati\n"
-                   "Codice: SFILES_FOUND_ON_EXIT\n\n");
             break;
         }
 

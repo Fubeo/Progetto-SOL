@@ -5,7 +5,7 @@ LIBS       				= -lpthread
 SERVER_OUT 				= ./out/server
 CLIENT_OUT 				= ./out/client
 FLAGS							= -std=c99 -Wall
-VALGRIND_FLAGS 		= --leak-check=full --show-leak-kinds=all
+VALGRIND_FLAGS 		= --leak-check=full --show-leak-kinds=all -s
 
 .DEFAULT_GOAL := all
 
@@ -29,6 +29,9 @@ client_lib = 	./lib/src/customsocket.c			\
 .SUFFIXES: .c .h
 .PHONY: all
 
+clean :
+		@rm -f ./test/download/* ./test/backup/* ./tmp/*.sk
+
 server: server.c
 		$(CC) $(INCLUDES) -o $(SERVER_OUT) server.c $(server_lib) $(LIBS) $(FLAGS)
 
@@ -43,6 +46,3 @@ test1: server client clean
 		sh script/test1.sh
 		@killall -TERM -w memcheck-amd64-
 		@printf "\ntest1 terminato\n"
-
-clean :
-	@rm -f ./test/download/* ./test/backup/* ./tmp/*.sk
