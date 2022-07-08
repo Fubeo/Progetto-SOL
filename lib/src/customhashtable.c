@@ -229,7 +229,7 @@ void hash_print_all(hash_table* table) {
         if (table->buckets[i] != NULL) {
             list_node *head = table->buckets[i]->head;
             while (head != NULL && !exit) {
-                fprintf(stdout, "%s %p\n", head->key, head->value);
+                fprintf(stdout, "%s %d\n", head->key, *((int*)head->value));
                 head = head->next;
             }
 

@@ -46,3 +46,10 @@ test1: server client clean
 		sh script/test1.sh
 		@killall -TERM -w memcheck-amd64-
 		@printf "\ntest1 terminato\n"
+
+testlock: server client clean
+		clear
+		valgrind $(VALGRIND_FLAGS) $(SERVER_OUT) -c./config/testlock.ini &
+		sh script/testlock.sh
+		@killall -TERM -w memcheck-amd64-
+		@printf "\ntest1 terminato\n"

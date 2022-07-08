@@ -1,7 +1,8 @@
 sleep 3 #per dare tempo al server di avviarsi
 real_path=$(realpath ./test)
 path_test1="${real_path}/test1/"
+path_test3="${real_path}/test3/"
 
-args="-f./tmp/serversock.sk -w${path_test1}"
-./out/client ${args}, -u${path_test1}filenormale.txt &
-./out/client ${args}, -u${path_test1}filenormale.txt
+args="-f./tmp/serversock.sk"
+./out/client ${args} -w${path_test1}
+./out/client ${args} -w${path_test3}

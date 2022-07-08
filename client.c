@@ -16,7 +16,6 @@
 #include "./lib/customerrno.h"
 #include "./lib/customfile.h"
 
-
 #define O_OPEN 0
 #define O_CREATE 1
 #define O_LOCK 2
@@ -74,6 +73,9 @@ int readFile(const char *pathname, void **buf, size_t *size);
 
 // -c
 int removeFile(const char *pathname);
+
+// -l
+int lockFile(const char*pathname);
 
 // -u
 int unlockFile(const char*pathname);
@@ -434,8 +436,8 @@ void execute_options(int argc, char *argv[], int sd){
 
 void send_file_to_server(const char *backup_folder, char *file) {
     int errcode;
-    if(print_all) printf("Sending \n%s\n", file);
-    if (openFile(file, O_LOCK) != 0) {
+    if(print_all) printf("Sending %s\n", file);
+    if (openFile(file, O_CREATE) != 0) {
         pcode(errno, file);
         return;
     }
@@ -717,7 +719,7 @@ int write_file(const char *pathname, const char *dirname) {
 }
 
 int readNFiles(int N, const char *dirname) {
-    errno=0;
+    errno = 0;
     char* dir=NULL;
 
     if(dirname != NULL) {
@@ -818,7 +820,8 @@ int removeFile(const char *pathname) {
     if(pathname==NULL)
         return 0;
 
-    char *request = str_concat("rm:", pathname);
+    char* client_pid=str_long_toStr(getpid());
+    char *request = str_concatn("rm:", pathname, ":", client_pid, NULL);
     sendn(sd, request, str_length(request));
     int status = (int)receiveInteger(sd);
 
@@ -828,6 +831,10 @@ int removeFile(const char *pathname) {
     }
     free(request);
     return 0;
+}
+
+int lockFile(const char*pathname){
+  
 }
 
 int unlockFile(const char*pathname){
