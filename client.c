@@ -41,6 +41,7 @@ char *download_folder = NULL;     // -d
 char *backup_folder = NULL;       // -D
 bool print_all = true;           	// -p
 int sleep_between_requests = 0;   // -t
+bool requested_o_lock = false;    // -L
 
 bool running = true;
 bool connected = false;
@@ -101,6 +102,7 @@ void print_commands() {
     printf("\t-f <sock> \t\tSets socket name to <sock>. \033[0;31m This option must be set once and only once. \033[0m\n");
     printf("\t-w <dir>[,<num>] \tSends the content of the directory <dir> (and its subdirectories) to the server. If <num> is specified, at most <num> files will be sent to the server.\n");
     printf("\t-W <file>{,<files>}\tSends the files passed as arguments to the server.\n");
+    printf("\t-L \tWorks only if used with -w or -W. Sets lock flag on all specified files.\n");
     printf("\t-D <dir>\t\tWrites into directory <dir> all the files expelled by the server. \033[0;31m This option must follow one of -w or -W. \033[0m\n");
     printf("\t-R[<num>] \t\tReads <num> files from the server. If <num> is not specified, reads all files from the server. \033[0;31m There must be no space bewteen -R and <num>.\033[0m\n");
     printf("\t-r <file>{,<files>}\tReads the files specified in the argument list from the server.\n");
@@ -136,6 +138,8 @@ void check_options(int argc, char *argv[]){
     else if (str_starts_with(argv[i], "-t")) str_toInteger(&sleep_between_requests, (argv[i]) += 2);
 
     else if (str_starts_with(argv[i], "-p")) print_all = true;
+
+    else if (str_starts_with(argv[i], "-L")) requested_o_lock = true;
 
     else {
       if(str_starts_with(argv[i],"-r") || str_starts_with(argv[i],"-R")){
@@ -273,7 +277,7 @@ int closeConnection(const char *sockname) {
 
 void execute_options(int argc, char *argv[], int sd){
   int opt, errcode;
-  while ((opt = getopt(argc, argv, ":h:W:w:R:r:c:u:")) != -1) {
+  while ((opt = getopt(argc, argv, ":h:W:w:R:r:c:l:u:")) != -1) {
 
     switch (opt) {
       case 'h': {
@@ -413,6 +417,18 @@ void execute_options(int argc, char *argv[], int sd){
         break;
       }
 
+      case 'l': {
+        char **files = NULL;
+        int n = str_split(&files, optarg, ",");
+        for (int i = 0; i < n; i++) {
+          files[i] = realpath(files[i], NULL);
+          lockFile(files[i]);
+          usleep(sleep_between_requests * 1000);
+        }
+        str_clearArray(&files, n);
+        break;
+      }
+
       case 'u': {
         char **files = NULL;
         int n = str_split(&files, optarg, ",");
@@ -437,7 +453,11 @@ void execute_options(int argc, char *argv[], int sd){
 void send_file_to_server(const char *backup_folder, char *file) {
     int errcode;
     if(print_all) printf("Sending %s\n", file);
-    if (openFile(file, O_CREATE) != 0) {
+    int o;
+    if(requested_o_lock) o = O_LOCK;
+    else o = O_CREATE;
+
+    if (openFile(file, o) != 0) {
         pcode(errno, file);
         return;
     }
@@ -501,7 +521,7 @@ int openFile(char *pathname, int flags) {
 
           if(response == S_STORAGE_FULL){
             while ((int) receiveInteger(sd)!=EOS_F){
-              char* s= receiveStr(sd);
+              char* s = receiveStr(sd);
               pwarn("WARNING: Il file %s has been removed\n"
                     "Increase storage space to store more files!\n\n", (strrchr(s,'/')+1));
               free(s);
@@ -570,14 +590,13 @@ int openFile(char *pathname, int flags) {
               free(pathname);
               free(client_pid);
               errno = response;
-
               return -1;
             }
 
             free(cmd);
+            requested_o_lock = false;
             break;
           }
-
           response = -1;
           break;
         }
@@ -630,21 +649,20 @@ int write_file(const char *pathname, const char *dirname) {
 
       errno=0;
 
-    //costruisco la key
+    // costruisco la key
 
     if(pathname==NULL) {
         errno=FILE_NOT_FOUND;
         return -1;
     }
 
-    //mando la richiesta di scrittura al Server -> key: abs_path | value: file_content
+    // mando la richiesta di scrittura al Server -> key: abs_path | value: file_content
     char *request;
     if (dirname != NULL) {
-        request = str_concatn("w:", pathname, ":", client_pid,"?", "y", NULL);
+        request = str_concatn(pathname, ":", client_pid,"?", "y", NULL);
     } else {
-        request = str_concatn("w:", pathname, ":", client_pid,"?", "n", NULL);
+        request = str_concatn(pathname, ":", client_pid,"?", "n", NULL);
     }
-
 
     sendn(sd, request, str_length(request));
 
@@ -691,7 +709,7 @@ int write_file(const char *pathname, const char *dirname) {
             FILE* file=fopen(path,"wb");
             if(file==NULL){
                 perr("Impossibile creare un nuovo file, libera spazio!\n");
-            }else {
+            } else {
                 fwrite(buff, sizeof(char), n, file);
                 psucc("Download completato!\n\n");
                 fclose(file);
@@ -731,8 +749,9 @@ int readNFiles(int N, const char *dirname) {
     }
 
     // Invio la richiesta al Server
-    char* n = str_long_toStr(N);
-    char *request = str_concat("rn:", n);
+    char *client_pid = str_long_toStr(getpid());
+    char *n = str_long_toStr(N);
+    char *request = str_concatn("rn:", n, ":", client_pid, NULL);
     sendStr(sd, request);
 
     //se la risposta è ok, lo storage non è vuoto
@@ -786,10 +805,9 @@ int readFile(const char *pathname, void **buf, size_t *size) {
         return 0;
     }
 
-    char* client_pid=str_long_toStr(getpid());
-
 
     //mando la richiesta al server
+    char *client_pid = str_long_toStr(getpid());
     char *request = str_concatn("r:", pathname, ":", client_pid, NULL);
     sendn(sd, request, str_length(request));
 
@@ -834,7 +852,32 @@ int removeFile(const char *pathname) {
 }
 
 int lockFile(const char*pathname){
-  
+  char *client_pid = str_long_toStr(getpid());
+  char *cmd = str_concatn("l:", pathname, ":", client_pid, NULL);
+  sendn(sd, (char*)cmd, str_length(cmd));
+  free(cmd);
+
+    // Attesa della risposta del server
+    int response = (int)receiveInteger(sd);
+
+    if(response == SFILE_NOT_FOUND){
+      errno = SFILE_NOT_FOUND;
+      pwarn("WARNING: file %s does not exist on the server!\n\n", pathname);
+      return -1;
+    }
+
+    if(response == SFILE_WAS_REMOVED){
+      errno = SFILE_WAS_REMOVED;
+      pwarn("WARNING: file %s has been removed before server could access to it!\n\n", pathname);
+      return -1;
+    }
+
+    if(response == S_SUCCESS) {
+      if(print_all) psucc("File %s successfully locked\n", pathname);
+      return 0;
+    }
+
+    return -1;
 }
 
 int unlockFile(const char*pathname){

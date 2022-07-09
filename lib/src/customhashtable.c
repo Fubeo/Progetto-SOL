@@ -163,8 +163,7 @@ void hash_iterate(hash_table* table, void (*f)(char *, void *, bool*, void*), vo
                 head = head->next;
             }
 
-            if(exit)
-                break;
+            if(exit) break;
         }
     }
     pthread_mutex_unlock(&(table)->lock);
@@ -175,11 +174,12 @@ bool hash_isEmpty(hash_table* table){
 }
 
 void hash_iteraten(hash_table* table, void (*f)(char *, void *, bool*, void*), void* args , int n) {
-    if(n>table->max_size || n <= 0){
+    if(n > table->max_size || n <= 0){
         hash_iterate(table,f, args);
         return;
     }
     pthread_mutex_lock(&(table)->lock);
+        fprintf(stderr, "ENTRO %d\n", n);
     int i=0;
     bool exit=false;
     while(n > 0 && i < table->max_size) {

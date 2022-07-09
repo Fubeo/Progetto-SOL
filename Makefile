@@ -30,7 +30,7 @@ client_lib = 	./lib/src/customsocket.c			\
 .PHONY: all
 
 clean :
-		@rm -f ./test/download/* ./test/backup/* ./tmp/*.sk
+		@rm -f ./tmp/download/* ./tmp/backup/* ./tmp/*.sk
 
 server: server.c
 		$(CC) $(INCLUDES) -o $(SERVER_OUT) server.c $(server_lib) $(LIBS) $(FLAGS)
