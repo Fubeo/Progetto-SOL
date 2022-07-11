@@ -294,6 +294,7 @@ void execute_options(int argc, char *argv[], int sd){
           usleep(sleep_between_requests * 1000);
         }
         str_clearArray(&files, n);
+        if(requested_o_lock)requested_o_lock = false;
         break;
       }
 
@@ -324,6 +325,7 @@ void execute_options(int argc, char *argv[], int sd){
           usleep(sleep_between_requests * 1000);
         }
 
+        if(requested_o_lock)requested_o_lock = false;
         str_clearArray(&array, n);
         //str_clearArray(&files, count);
         break;
@@ -594,7 +596,6 @@ int openFile(char *pathname, int flags) {
             }
 
             free(cmd);
-            requested_o_lock = false;
             break;
           }
           response = -1;

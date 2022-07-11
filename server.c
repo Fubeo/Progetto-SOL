@@ -1,4 +1,4 @@
-    #define _GNU_SOURCE
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/types.h>
@@ -67,23 +67,23 @@ size_t n_cache_replacements = 0;
 // ===================== Gestione funzioni base del server =====================
 void init_server(int argc, char *argv[]);
 void *worker_function();
-void closeConnection(int client, char *cpid);
+void closeConnection(int fd_client, char *cpid);
 void *stop_server(void *argv);
 void close_server();
 
 // ======================== Gestione richieste client ==========================
 void writeFile(int fd_client, char *request, bool filejustcreated);
 void createFile(int fd_client, char *request);
-void openFile(int client, char *request);
-void openO_LOCK(int client, char *request);
-void removeFile(int client, char *request);
+void openFile(int fd_client, char *request);
+void openO_LOCK(int fd_client, char *request);
+void removeFile(int fd_client, char *request);
 void closeFile(int fd_client, char *request);
 void readFile(int fd_client, char *request);
-void readNFile(int client, char *request);
+void readNFile(int fd_client, char *request);
 void send_nfiles(char *key, void *value, bool *exit, void *args);
-void appendFile(int client, char *request);
-void lockFile(int client, char *request);
-void unlockFile(int client, char *request);
+void appendFile(int fd_client, char *request);
+void lockFile(int fd_client, char *request);
+void unlockFile(int fd_client, char *request);
 
 // ====================== Gestione storage del server ==========================
 void free_space(int fd_client, char option, size_t fsize, char *cpid);
@@ -92,11 +92,12 @@ void file_destroy_completely(void *f);
 void file_open(file_s **f, char *cpid);
 bool file_isOpened(file_s *f);
 static file_s *file_init(char *path);
-void clear_openedFiles(char *key, void *value, bool *exit, void *cpid);
 bool file_is_opened_by(file_s *f, char *pid);
 bool file_is_empty(file_s *f);
 void file_update(file_s **f, void *newContent, size_t newSize);
 void client_closes_file(file_s **f, char *cpid);
+void clear_openedFiles(char *key, void *value, bool *exit, void *cpid);
+void clear_openers(file_s *f);
 
 // =================== Output informazioni sul server ==========================
 void print_statistics();
@@ -399,15 +400,15 @@ void *worker_function(){
   return NULL;
 }
 
-void closeConnection(int client, char *cpid) {
+void closeConnection(int fd_client, char *cpid) {
     int nfiles = *((int *) hash_getValue(tbl_has_opened, cpid));
 
     if (nfiles == 0) {
-        sendInteger(client, S_SUCCESS);
+        sendInteger(fd_client, S_SUCCESS);
     } else if(config.PRINT_LOG == 2){
-        pwarn("Client %d has not closed many files yet\n", client);
+        pwarn("Client %d has not closed many files yet\n", fd_client);
 
-        sendInteger(client, SFILES_FOUND_ON_EXIT);
+        sendInteger(fd_client, SFILES_FOUND_ON_EXIT);
 
         hash_iterate(tbl_file_path, &clear_openedFiles, (void *) cpid);
 
@@ -417,9 +418,9 @@ void closeConnection(int client, char *cpid) {
     assert((*((int *) hash_getValue(tbl_has_opened, cpid))) == 0);
 
     hash_deleteKey(&tbl_has_opened, cpid, &free);
-    if (close(client) != 0) {
-        perr("WARNING: error closing socket with client %d\n", client);
-    } else psucc("Client %d disconnected\n\n", client);
+    if (close(fd_client) != 0) {
+        perr("WARNING: error closing socket with client %d\n", fd_client);
+    } else psucc("Client %d disconnected\n\n", fd_client);
 
     n_clients--;
 }
@@ -484,7 +485,7 @@ void createFile(int fd_client, char *request) {
     sendInteger(fd_client, SFILE_TOO_LARGE);
 
   } else if (storable_files_left == 0) {
-    pwarn("Rilevata CAPACITY MISS\n", fd_client);
+    pwarn("Capacity miss detected: too many files already stored\n", fd_client);
 
     sendInteger(fd_client, S_STORAGE_FULL);
     free_space(fd_client, 'c', 0, cpid);
@@ -523,7 +524,7 @@ void createFile(int fd_client, char *request) {
   str_clearArray(&split, n);
 }
 
-void openFile(int client, char *request) {
+void openFile(int fd_client, char *request) {
     char **array = NULL;
     int n = str_split(&array, request, ":");
     char *filepath = array[0];  //path del file inviato dal Client
@@ -531,13 +532,13 @@ void openFile(int client, char *request) {
 
     if (!hash_containsKey(tbl_file_path, filepath)) { //controllo se il file non è presente nello storage
 
-            pwarn("Il client %d ha eseguito un operazione su un file che non esiste\n", client);
+            pwarn("Il client %d ha eseguito un operazione su un file che non esiste\n", fd_client);
 
 
 
             perr("Richiesta non eseguita");
 
-        sendInteger(client, SFILE_NOT_FOUND);
+        sendInteger(fd_client, SFILE_NOT_FOUND);
         str_clearArray(&array, n);
         return;
     }
@@ -545,33 +546,42 @@ void openFile(int client, char *request) {
     file_s *f = hash_getValue(tbl_file_path, filepath);
     if (file_is_opened_by(f, cpid)) { // Controllo se il file è già stato aperto dal Client
         if(config.PRINT_LOG == 2)
-            pwarn("Il client %d ha tentato di aprire un file che ha già aperto\n", client);
+            pwarn("Il client %d ha tentato di aprire un file che ha già aperto\n", fd_client);
         if(config.PRINT_LOG == 1)
             perr("request not executed\n");
 
-        sendInteger(client, SFILE_ALREADY_OPENED);
+        sendInteger(fd_client, SFILE_ALREADY_OPENED);
         str_clearArray(&array, n);
         return;
     }
 
-    pthread_mutex_t *fl = f->file_lock;
-    pthread_mutex_lock(fl);
-    if (!hash_containsKey(tbl_file_path, filepath)){  // Il worker controlla che il file non sia stato rimosso mentre aspettava la lock
+    // Creazione di variabili utili a gestire una eventuale cancellazione del file da parte di altri client
+    bool still_exists;
+    pthread_cond_t *cond = f->file_cond;
+    pthread_mutex_t *mtx = f->file_lock;
+
+    // Acquisizione della lock del semaforo del file. Chi non dietiene il flag o_lock (locked_by)
+    // non esce dal ciclo finche' la lock non viene rilasciata.
+    while((still_exists = hash_containsKey(tbl_file_path, filepath)) && f->locked_by != NULL && strcmp(f->locked_by, cpid) != 0){
+      if (pthread_cond_wait(cond, mtx) != 0) fprintf(stderr, "FATAL ERROR unlock\n");
+    }
+    if(!still_exists){ // Il worker controlla che il file non sia stato rimosso mentre aspettava la lock
       if(config.PRINT_LOG == 2)
-          pwarn("Client %d obtained lock, but file was removed\n", client);
+          pwarn("Client %d obtained lock, but file was removed\n", fd_client);
       if(config.PRINT_LOG == 1)
           perr("request not executed\n");
-      sendInteger(client, SFILE_WAS_REMOVED);
+      sendInteger(fd_client, SFILE_WAS_REMOVED);
       str_clearArray(&array, n);
       return;
     }
     file_open(&f, cpid);
-    pthread_mutex_unlock(fl);
+    pthread_cond_signal(cond);
+    pthread_mutex_unlock(mtx);
 
-    sendInteger(client, S_SUCCESS);
+    sendInteger(fd_client, S_SUCCESS);
 
 
-        psucc("Client %d opened file %s\n", client, (strrchr(filepath,'/')+1));
+        psucc("Client %d opened file %s\n", fd_client, (strrchr(filepath,'/')+1));
 
     str_clearArray(&array, n);
 }
@@ -612,7 +622,8 @@ void openO_LOCK(int fd_client, char *request){
     pthread_cond_t *cond = f->file_cond;
     pthread_mutex_t *mtx = f->file_lock;
 
-    // Acquisizione della lock
+    // Acquisizione della lock del semaforo del file. Chi non dietiene il flag o_lock (locked_by)
+    // non esce dal ciclo finche' la lock non viene rilasciata.
     while((still_exists = hash_containsKey(tbl_file_path, filepath)) && f->locked_by != NULL && strcmp(f->locked_by, cpid) != 0){
       if (pthread_cond_wait(cond, mtx) != 0) fprintf(stderr, "FATAL ERROR unlock\n");
     }
@@ -621,7 +632,7 @@ void openO_LOCK(int fd_client, char *request){
           pwarn("Client %d obtained lock, but file was removed\n", fd_client);
       if(config.PRINT_LOG == 1)
           perr("request not executed\n");
-      sendInteger(fd_client, SFILE_NOT_FOUND);
+      sendInteger(fd_client, SFILE_WAS_REMOVED);
       str_clearArray(&array, n);
       free(cpid);
       return;
@@ -693,6 +704,10 @@ void openO_LOCK(int fd_client, char *request){
       f->locked_by = cpid;
 
       sendInteger(fd_client, S_SUCCESS);			// notifico il client dell'esito positivo dell'operazione
+
+      char* req = receiveStr(fd_client);
+      writeFile(fd_client, req, true);
+      free(req);
     }
 
     str_clearArray(&array, n);
@@ -700,7 +715,7 @@ void openO_LOCK(int fd_client, char *request){
 
 }
 
-void removeFile(int client, char *request) {
+void removeFile(int fd_client, char *request) {
     char **array = NULL;
     int n = str_split(&array, request, ":");
     char *filepath = array[0];  // path del file inviato dal Client
@@ -708,10 +723,10 @@ void removeFile(int client, char *request) {
 
     // Controllo se il file esiste
     if (!hash_containsKey(tbl_file_path, filepath)) {
-            pwarn("Client %d tried to access a non-existent file\n", client);
+            pwarn("Client %d tried to access a non-existent file\n", fd_client);
 
 
-        sendInteger(client, SFILE_NOT_FOUND);
+        sendInteger(fd_client, SFILE_NOT_FOUND);
         str_clearArray(&array, n);
         return;
     }
@@ -721,17 +736,21 @@ void removeFile(int client, char *request) {
 
 
     // Creazione di variabili utili a gestire una eventuale cancellazione del file da parte di altri client
+    bool still_exists;
     pthread_cond_t *cond = f->file_cond;
     pthread_mutex_t *mtx = f->file_lock;
 
-    // Acquisizione della lock
-    if(f->locked_by == NULL || strcmp(f->locked_by, cpid) != 0) pthread_mutex_lock(mtx);
-
-    if(!hash_containsKey(tbl_file_path, filepath)){ // Il worker controlla che il file non sia stato rimosso mentre aspettava la lock
+    // Acquisizione della lock del semaforo del file. Chi non dietiene il flag o_lock (locked_by)
+    // non esce dal ciclo finche' la lock non viene rilasciata.
+    while((still_exists = hash_containsKey(tbl_file_path, filepath)) && f->locked_by != NULL && strcmp(f->locked_by, cpid) != 0){
+      if (pthread_cond_wait(cond, mtx) != 0) fprintf(stderr, "FATAL ERROR unlock\n");
+    }
+    if(!still_exists){ // Il worker controlla che il file non sia stato rimosso mentre aspettava la lock
       if(config.PRINT_LOG == 2)
-          pwarn("Client %d obtained lock, but file was removed\n", client);
+          pwarn("Client %d obtained lock, but file was removed\n", fd_client);
       if(config.PRINT_LOG == 1)
           perr("request not executed\n");
+      sendInteger(fd_client, SFILE_WAS_REMOVED);
       str_clearArray(&array, n);
       return;
     }
@@ -745,16 +764,9 @@ void removeFile(int client, char *request) {
     }
     pthread_mutex_unlock(&server_data_lock);
 
-    list_node *corr = f->pidlist->head;
-    while(corr != NULL){
-      fprintf(stdout, "%s\n", corr->key);
-      int *x = (int *) hash_getValue(tbl_has_opened, corr->key);
-      *x -= 1;
-      hash_updateValue(&tbl_has_opened, corr->key, x, NULL);
-      corr = corr->next;
-    }
 
     // Rimozione del file dallo storage
+    clear_openers(f);
     hash_deleteKey(&tbl_file_path, filepath, &file_destroy);
 
     pthread_cond_signal(cond);
@@ -766,10 +778,10 @@ void removeFile(int client, char *request) {
     free(cond);
     free(mtx);
 
-    sendInteger(client, S_SUCCESS);
+    sendInteger(fd_client, S_SUCCESS);
 
     if(config.PRINT_LOG > 0)
-        psucc("File %s removed by client %d\n\n", (strrchr(filepath,'/')+1), client);
+        psucc("File %s removed by client %d\n\n", (strrchr(filepath,'/')+1), fd_client);
 
     str_clearArray(&array, n);
 }
@@ -806,13 +818,16 @@ void closeFile(int fd_client, char *request) {
     }
 
     // Creazione di variabili utili a gestire una eventuale cancellazione del file da parte di altri client
+    bool still_exists;
     pthread_cond_t *cond = f->file_cond;
     pthread_mutex_t *mtx = f->file_lock;
 
-    // Acquisizione della lock
-    if(f->locked_by == NULL || strcmp(f->locked_by, cpid) != 0) pthread_mutex_lock(mtx);
-
-    if(!hash_containsKey(tbl_file_path, filepath)){ // Il worker controlla che il file non sia stato rimosso mentre aspettava la lock
+    // Acquisizione della lock del semaforo del file. Chi non dietiene il flag o_lock (locked_by)
+    // non esce dal ciclo finche' la lock non viene rilasciata.
+    while((still_exists = hash_containsKey(tbl_file_path, filepath)) && f->locked_by != NULL && strcmp(f->locked_by, cpid) != 0){
+      if (pthread_cond_wait(cond, mtx) != 0) fprintf(stderr, "FATAL ERROR unlock\n");
+    }
+    if(!still_exists){ // Il worker controlla che il file non sia stato rimosso mentre aspettava la lock
       if(config.PRINT_LOG == 2)
           pwarn("Client %d obtained lock, but file was removed\n", fd_client);
       if(config.PRINT_LOG == 1)
@@ -821,6 +836,7 @@ void closeFile(int fd_client, char *request) {
       str_clearArray(&array, n);
       return;
     }
+
 
     client_closes_file(&f, cpid);
 
@@ -917,7 +933,7 @@ void writeFile(int fd_client, char *request, bool filejustcreated) {
 
     //da qui in poi il file viene inserito
     if (fsize > storage_left) {  //se non ho spazio
-        pwarn("Rilevata Capacity Miss\n");
+      pwarn("Capacity miss detected: not enough storage space left\n", fd_client);
 
         sendInteger(fd_client, S_STORAGE_FULL);
         free_space(fd_client, option, fsize, cpid);
@@ -980,19 +996,23 @@ void readFile(int fd_client, char *request) {
     }
 
     // Creazione di variabili utili a gestire una eventuale cancellazione del file da parte di altri client
+    bool still_exists;
     pthread_cond_t *cond = f->file_cond;
     pthread_mutex_t *mtx = f->file_lock;
 
-    // Acquisizione della lock
-    if(f->locked_by == NULL || strcmp(f->locked_by, cpid) != 0) pthread_mutex_lock(mtx);
-
-    if(!hash_containsKey(tbl_file_path, filepath)){ // Il worker controlla che il file non sia stato rimosso mentre aspettava la lock
+    // Acquisizione della lock del semaforo del file. Chi non dietiene il flag o_lock (locked_by)
+    // non esce dal ciclo finche' la lock non viene rilasciata.
+    while((still_exists = hash_containsKey(tbl_file_path, filepath)) && f->locked_by != NULL && strcmp(f->locked_by, cpid) != 0){
+      if (pthread_cond_wait(cond, mtx) != 0) fprintf(stderr, "FATAL ERROR unlock\n");
+    }
+    if(!still_exists){ // Il worker controlla che il file non sia stato rimosso mentre aspettava la lock
       if(config.PRINT_LOG == 2)
-          pwarn("Client with pid %s obtained lock, but file was removed\n", cpid);
+          pwarn("Client %d obtained lock, but file was removed\n", fd_client);
       if(config.PRINT_LOG == 1)
           perr("request not executed\n");
       sendInteger(fd_client, SFILE_WAS_REMOVED);
       str_clearArray(&array, n);
+      free(cpid);
       return;
     }
 
@@ -1063,7 +1083,7 @@ void send_nfiles(char *key, void *value, bool *exit, void *args) {
   args=args;
 }
 
-void appendFile(int client, char *request) {
+void appendFile(int fd_client, char *request) {
     char **array = NULL;
     int n = str_split(&array, request, ":?");
     char *filepath = array[0];
@@ -1074,25 +1094,25 @@ void appendFile(int client, char *request) {
 
     void *fcontent;
     size_t fsize;
-    receivefile(client, &fcontent, &fsize);
+    receivefile(fd_client, &fcontent, &fsize);
     file_s *f = hash_getValue(tbl_file_path, filepath);
 
     if ((f->size + fsize) > config.MAX_STORAGE) {
         if (config.PRINT_LOG == 2) {
-            pwarn("Il client %d ha inviato un file troppo grande\n\n", client);
+            pwarn("Il client %d ha inviato un file troppo grande\n\n", fd_client);
         }
 
-        sendInteger(client, SFILE_TOO_LARGE);
+        sendInteger(fd_client, SFILE_TOO_LARGE);
         free(fcontent);
         return;
     }
 
     if (!hash_containsKey(tbl_file_path, filepath)) {
         if (config.PRINT_LOG == 2) {
-            pwarn("Il client %d ha eseguito un operazione su un file che non esiste\n\n", client);
+            pwarn("Il client %d ha eseguito un operazione su un file che non esiste\n\n", fd_client);
         }
 
-        sendInteger(client, SFILE_NOT_FOUND);
+        sendInteger(fd_client, SFILE_NOT_FOUND);
         free(fcontent);
         str_clearArray(&array, n);
         return;
@@ -1100,29 +1120,32 @@ void appendFile(int client, char *request) {
 
     if (!file_is_opened_by(f, cpid)) {
         if (config.PRINT_LOG == 2) {
-            pwarn("Il client %d ha eseguito un operazione su un file non aperto\n\n", client);
+            pwarn("Il client %d ha eseguito un operazione su un file non aperto\n\n", fd_client);
         }
-        sendInteger(client, SFILE_NOT_OPENED);
+        sendInteger(fd_client, SFILE_NOT_OPENED);
         free(fcontent);
         str_clearArray(&array, n);
         return;
     }
 
     // Creazione di variabili utili a gestire una eventuale cancellazione del file da parte di altri client
+    bool still_exists;
     pthread_cond_t *cond = f->file_cond;
     pthread_mutex_t *mtx = f->file_lock;
 
-    // Acquisizione della lock
-    if(f->locked_by == NULL || strcmp(f->locked_by, cpid) != 0) pthread_mutex_lock(mtx);
-
-    if(!hash_containsKey(tbl_file_path, filepath)){ // Il worker controlla che il file non sia stato rimosso mentre aspettava la lock
+    // Acquisizione della lock del semaforo del file. Chi non dietiene il flag o_lock (locked_by)
+    // non esce dal ciclo finche' la lock non viene rilasciata.
+    while((still_exists = hash_containsKey(tbl_file_path, filepath)) && f->locked_by != NULL && strcmp(f->locked_by, cpid) != 0){
+      if (pthread_cond_wait(cond, mtx) != 0) fprintf(stderr, "FATAL ERROR unlock\n");
+    }
+    if(!still_exists){ // Il worker controlla che il file non sia stato rimosso mentre aspettava la lock
       if(config.PRINT_LOG == 2)
-          pwarn("Client with pid %s obtained lock, but file was removed\n", cpid);
+          pwarn("Client %d obtained lock, but file was removed\n", fd_client);
       if(config.PRINT_LOG == 1)
-          perr("Request not executed\n");
-      free(fcontent);
+          perr("request not executed\n");
+      sendInteger(fd_client, SFILE_WAS_REMOVED);
       str_clearArray(&array, n);
-      sendInteger(client, SFILE_WAS_REMOVED);
+      free(cpid);
       return;
     }
 
@@ -1131,8 +1154,8 @@ void appendFile(int client, char *request) {
         if (config.PRINT_LOG == 2) {
             pwarn("Detected capacity miss\n");
         }
-        sendInteger(client, S_STORAGE_FULL);
-        free_space(client, option, fsize, cpid);
+        sendInteger(fd_client, S_STORAGE_FULL);
+        free_space(fd_client, option, fsize, cpid);
 
         if (fsize >= storage_left) {
             if (config.PRINT_LOG == 1 || config.PRINT_LOG == 2) {
@@ -1140,7 +1163,7 @@ void appendFile(int client, char *request) {
             }
             free(fcontent);
             str_clearArray(&array, n);
-            sendInteger(client, S_FREE_ERROR);
+            sendInteger(fd_client, S_FREE_ERROR);
             return;
         }
 
@@ -1154,7 +1177,7 @@ void appendFile(int client, char *request) {
     void *newContent = malloc(newSize);
     if (newContent == NULL) {
         perr("malloc error: impossibile appendere il contenuto richiesto\n");
-        sendInteger(client, MALLOC_ERROR);
+        sendInteger(fd_client, MALLOC_ERROR);
         return;
     }
 
@@ -1164,7 +1187,7 @@ void appendFile(int client, char *request) {
     free(f->content);
     f->content = newContent;
     f->size = newSize;
-    sendInteger(client, S_SUCCESS);
+    sendInteger(fd_client, S_SUCCESS);
 
     // Rilascio la lock
     if(f->locked_by == NULL || strcmp(f->locked_by, cpid) != 0) {
@@ -1173,7 +1196,7 @@ void appendFile(int client, char *request) {
     }
 
     if (config.PRINT_LOG == 1 || config.PRINT_LOG == 2) {
-        psucc("Append per il Client %d eseguita\n\n", client);
+        psucc("Append per il Client %d eseguita\n\n", fd_client);
     }
 }
 
@@ -1189,7 +1212,7 @@ void lockFile(int fd_client, char *request){
       pwarn("Client %d tried to lock a file that does not exist\n", fd_client);
     }
     if (config.PRINT_LOG == 1){
-      perr("request not executed\n");
+      perr("request denied\n");
     }
     sendInteger(fd_client, SFILE_NOT_FOUND);
     str_clearArray(&array, n);
@@ -1207,7 +1230,8 @@ void lockFile(int fd_client, char *request){
   pthread_cond_t *cond = f->file_cond;
   pthread_mutex_t *mtx = f->file_lock;
 
-  // Acquisizione della lock
+  // Acquisizione della lock del semaforo del file. Chi non dietiene il flag o_lock (locked_by)
+  // non esce dal ciclo finche' la lock non viene rilasciata.
   while((still_exists = hash_containsKey(tbl_file_path, filepath)) && f->locked_by != NULL && strcmp(f->locked_by, cpid) != 0){
     if (pthread_cond_wait(cond, mtx) != 0) fprintf(stderr, "FATAL ERROR unlock\n");
   }
@@ -1238,7 +1262,7 @@ void lockFile(int fd_client, char *request){
   str_clearArray(&array, n);
 }
 
-void unlockFile(int client, char *request){
+void unlockFile(int fd_client, char *request){
   assert(!str_is_empty(request) && request != NULL);
   char **array = NULL;
   int n = str_split(&array, request, ":");
@@ -1248,11 +1272,11 @@ void unlockFile(int client, char *request){
   //controllo che il file sia stato creato
   if (!hash_containsKey(tbl_file_path, filepath)) {
     if(config.PRINT_LOG == 2)
-        pwarn("Client %d tried to unlock a non-existent file\n", client);
+        pwarn("Client %d tried to unlock a non-existent file\n", fd_client);
     if(config.PRINT_LOG == 1)
         perr("request not executed\n");
 
-    sendInteger(client, SFILE_NOT_FOUND);
+    sendInteger(fd_client, SFILE_NOT_FOUND);
     str_clearArray(&array, n);
     return;
   }
@@ -1261,22 +1285,22 @@ void unlockFile(int client, char *request){
 
   if(f->locked_by == NULL){
     if(config.PRINT_LOG == 2)
-        pwarn("Client %d tried to unlock a non-locked file\n", client);
+        pwarn("Client %d tried to unlock a non-locked file\n", fd_client);
     if(config.PRINT_LOG == 1)
         perr("request not executed\n");
 
-    sendInteger(client, SFILE_NOT_LOCKED);
+    sendInteger(fd_client, SFILE_NOT_LOCKED);
     str_clearArray(&array, n);
     return;
   }
 
   if(strcmp(f->locked_by, cpid) != 0){
     if(config.PRINT_LOG == 2)
-        pwarn("Client %d tried to unlock a file locked by another client\n", client);
+        pwarn("Client %d tried to unlock a file locked by another client\n", fd_client);
     if(config.PRINT_LOG == 1)
         perr("request not executed\n");
 
-    sendInteger(client, CLIENT_NOT_ALLOWED);
+    sendInteger(fd_client, CLIENT_NOT_ALLOWED);
     str_clearArray(&array, n);
     return;
   }
@@ -1287,10 +1311,10 @@ void unlockFile(int client, char *request){
   pthread_cond_signal(f->file_cond);
   pthread_mutex_unlock(f->file_lock);
 
-  sendInteger(client, S_SUCCESS);
+  sendInteger(fd_client, S_SUCCESS);
 
   if(config.PRINT_LOG != 0)
-      psucc("Client %d unlocked file %s\n", client, filepath);
+      psucc("Client %d unlocked file %s\n", fd_client, filepath);
   str_clearArray(&array, n);
 }
 
@@ -1317,24 +1341,28 @@ void free_space(int fd_client, char option, size_t fsize, char *cpid) {
          * 2. Il client tenta di creare un file, ma la capacità massima è stata raggiunta. Quindi si
          *    procede come descritto nella Relazione - Sezione "Scelte effettuate"
          */
-        if (!file_isOpened(f)) {
+        if ((f->locked_by != NULL && strcmp(f->locked_by, cpid) == 0) || f->locked_by == NULL) {
             char *filepath = malloc(strlen(f->path)+1*sizeof(char));
             strcpy(filepath, f->path);
 
+
             // Creazione di variabili utili a gestire una eventuale cancellazione del file da parte di altri client
+            bool still_exists;
             pthread_cond_t *cond = f->file_cond;
             pthread_mutex_t *mtx = f->file_lock;
 
-            // Acquisizione della lock
-            if(f->locked_by == NULL || strcmp(f->locked_by, cpid) != 0) pthread_mutex_lock(mtx);
-
-            if(!hash_containsKey(tbl_file_path, filepath)){ // Il worker controlla che il file non sia stato rimosso mentre aspettava la lock
+            // Acquisizione della lock del semaforo del file. Chi non dietiene il flag o_lock (locked_by)
+            // non esce dal ciclo finche' la lock non viene rilasciata.
+            while((still_exists = hash_containsKey(tbl_file_path, filepath)) && f->locked_by != NULL && strcmp(f->locked_by, cpid) != 0){
+              if (pthread_cond_wait(cond, mtx) != 0) fprintf(stderr, "FATAL ERROR unlock\n");
+            }
+            if(!still_exists){ // Il worker controlla che il file non sia stato rimosso mentre aspettava la lock
               if(config.PRINT_LOG == 2)
                   pwarn("Client %d obtained lock, but file was removed\n", fd_client);
               if(config.PRINT_LOG == 1)
                   perr("request not executed\n");
-              free(filepath);
-              break;
+              sendInteger(fd_client, EOS_F);
+              return;
             }
             free(filepath);
 
@@ -1365,6 +1393,7 @@ void free_space(int fd_client, char option, size_t fsize, char *cpid) {
             pthread_mutex_unlock(&server_data_lock);
 
             // Rimozione del file dallo storage
+            clear_openers(f);
             hash_deleteKey(&tbl_file_path, f->path, &file_destroy);
 
             pthread_cond_signal(cond);
@@ -1522,6 +1551,17 @@ void clear_openedFiles(char *key, void *value, bool *exit, void *cpid) {
     //per togliere il warning "parameter never used"
     key = key;
     exit = exit;
+}
+
+void clear_openers(file_s *f){
+  list_node *corr = f->pidlist->head;
+  while(corr != NULL){
+    fprintf(stdout, "%s\n", corr->key);
+    int *x = (int *) hash_getValue(tbl_has_opened, corr->key);
+    *x -= 1;
+    hash_updateValue(&tbl_has_opened, corr->key, x, NULL);
+    corr = corr->next;
+  }
 }
 
 void print_statistics() {

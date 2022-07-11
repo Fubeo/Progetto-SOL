@@ -3,10 +3,12 @@ real_path=$(realpath ./)
 path_test1="${real_path}/test/test1/"
 path_test2="${real_path}/test/test2/"
 path_test3="${real_path}/test/test3/"
+path_test30="${real_path}/test/test30/"
+backup="${real_path}/tmp/backup/"
+download="${real_path}/tmp/download/"
 
-serversock="-f./tmp/serversock.sk"
-./out/client ${serversock} -l${path_test1}progettosol-20_21.pdf &
-./out/client ${serversock} -w${path_test2}  &
-./out/client ${serversock} -w${path_test1}
-./out/client ${serversock} -w${path_test3}
-./out/client ${serversock} -l${path_test1}progettosol-20_21.pdf , -d${real_path}/tmp/download -R3
+args="-f./tmp/serversock.sk"
+./out/client ${args} -t100 -L -D${backup} -w${path_test1}
+./out/client ${args} -t100 -L -D${backup} -w${path_test2}
+./out/client ${args} -t100 -L -D${backup} -w${path_test3}
+./out/client ${args} -t100 -L -D${backup} -w${path_test30}
