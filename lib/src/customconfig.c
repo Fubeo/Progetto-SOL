@@ -95,7 +95,7 @@ void settings_load(settings *s, char *path) {
     FILE *c;
 
     if (path == NULL || str_is_empty(path)) {
-        c = fopen("config.ini", "r");
+        c = fopen("config/config.ini", "r");
     } else {
         c = fopen(path, "r");
     }
@@ -109,8 +109,8 @@ void settings_load(settings *s, char *path) {
     }
 
     char **array = NULL;
-    char *line;
-    while ((line = file_readline(c)) != NULL) {
+    char *line = malloc(MAX_LEN*sizeof(char));
+    while (file_readline(c, &line)) {
         char* cleaned_line = str_clean(line);
         if (!str_starts_with(cleaned_line, "#") && !str_is_empty(cleaned_line)) {
             int n = str_splitn(&array, cleaned_line, "=#", 3);
@@ -118,8 +118,8 @@ void settings_load(settings *s, char *path) {
 
             str_clearArray(&array,n);
         }
-        free(line);
     }
+    free(line);
     fclose(c);
 }
 

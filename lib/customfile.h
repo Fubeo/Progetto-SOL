@@ -1,10 +1,9 @@
 #include <stdbool.h>
 
-
 #ifndef CUSTOM_FILE_H
 #define CUSTOM_FILE_H
 
-char* file_readline(FILE* file);
+char* file_readline(FILE* file, char **buffer);
 void* file_read_all(FILE* file);
 size_t file_getsize(FILE* file);
 bool is_directory(const char *file);

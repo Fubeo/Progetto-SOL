@@ -7,20 +7,12 @@
 #include <assert.h>
 #include "../customstring.h"
 #include "../customfile.h"
+#include "../customconfig.h"
 
-char* file_readline(FILE* file){
-    static char* line;
-    static size_t len;
-
-    int read_lines = (int) getline(&line,&len,file);
-    if(read_lines == -1){
-        return NULL;
-    }
-
-    str_remove_new_line(&line);
-    char *ret = malloc(str_length(line)*sizeof(char)+1);
-    strcpy(ret, line);
-    return ret;
+char* file_readline(FILE* file, char **buffer){
+  char* ret = fgets(*buffer, MAX_LEN, file);
+  str_remove_new_line(buffer);
+  return ret;
 }
 
 void *file_read_all(FILE* file){

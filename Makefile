@@ -38,7 +38,7 @@ server: server.c
 client: client.c
 		$(CC) $(INCLUDES) -o $(CLIENT_OUT) client.c $(client_lib) $(LIBS) $(FLAGS)
 
-all: 		server client
+all: server client
 
 test1: server client clean
 		clear
@@ -52,4 +52,4 @@ testlock: server client clean
 		valgrind $(VALGRIND_FLAGS) $(SERVER_OUT) -c./config/testlock.ini &
 		sh script/testlock.sh
 		@killall -TERM -w memcheck-amd64-
-		@printf "\ntest1 terminato\n"
+		@printf "\ntestlock terminato\n"
