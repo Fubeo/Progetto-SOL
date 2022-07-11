@@ -277,7 +277,7 @@ int closeConnection(const char *sockname) {
 
 void execute_options(int argc, char *argv[], int sd){
   int opt, errcode;
-  while ((opt = getopt(argc, argv, ":h:W:w:R:r:c:l:u:")) != -1) {
+  while ((opt = getopt(argc, argv, ":h:W:w:R::r:c:l:u:")) != -1) {
 
     switch (opt) {
       case 'h': {
@@ -332,9 +332,10 @@ void execute_options(int argc, char *argv[], int sd){
       }
 
       case 'R': {
+        fprintf(stdout, "READN\n");
           int n = 0;
           if (optarg != NULL) {
-              //optarg++;
+              optarg++;
               if (str_toInteger(&n, optarg) != 0) {
                   perr("%s non è un numero\n", optarg);
                   break;
@@ -344,6 +345,7 @@ void execute_options(int argc, char *argv[], int sd){
               errcode = errno;
               pcode(errcode, NULL);
           } else if(print_all){
+              if(n == 0)
               psucc("Ricevuti %d file\n\n", n);
           }
           break;
@@ -524,7 +526,7 @@ int openFile(char *pathname, int flags) {
           if(response == S_STORAGE_FULL){
             while ((int) receiveInteger(sd)!=EOS_F){
               char* s = receiveStr(sd);
-              pwarn("WARNING: Il file %s has been removed\n"
+              pwarn("WARNING: file %s has been removed\n"
                     "Increase storage space to store more files!\n\n", (strrchr(s,'/')+1));
               free(s);
             }
@@ -731,15 +733,12 @@ int write_file(const char *pathname, const char *dirname) {
         return -1;
     }
 
-        request = "s";
-            sendn(sd, request, str_length(request));
-
     return 0;
 }
 
 int readNFiles(int N, const char *dirname) {
     errno = 0;
-    char* dir=NULL;
+    char* dir = NULL;
 
     if(dirname != NULL) {
         if (!str_ends_with(dirname, "/")) {
@@ -766,7 +765,7 @@ int readNFiles(int N, const char *dirname) {
     void* buff;
     if (dir != NULL) {
         //ricevo i file espulsi
-        while((int) receiveInteger(sd)!=EOS_F) {
+        while((int) receiveInteger(sd) != EOS_F) {
             char *filepath = receiveStr(sd);
 
             char* file_name=strrchr(filepath,'/')+1;
@@ -775,7 +774,7 @@ int readNFiles(int N, const char *dirname) {
             char *path = str_concat(dir, file_name);
             FILE *file = fopen(path, "wb");
             if (file == NULL) { //se dirname è invalido, viene visto subito
-                errno=INVALID_ARG;
+                errno = INVALID_ARG;
                 return -1;
             }
             fwrite(buff, sizeof(char), size, file);
@@ -787,9 +786,9 @@ int readNFiles(int N, const char *dirname) {
         }
     } else{
         while((int) receiveInteger(sd) != EOS_F) {
-            char* filepath=receiveStr(sd);
+            char* filepath = receiveStr(sd);
             free(filepath);
-            receivefile(sd,&buff,&size);
+            receivefile(sd, &buff, &size);
             free(buff);
         }
     }

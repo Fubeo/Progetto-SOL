@@ -7,6 +7,6 @@ backup="${real_path}/tmp/backup/"
 download="${real_path}/tmp/download/"
 
 args="-f./tmp/serversock.sk"
-./out/client ${args} -t100 -D${backup} -w${path_test1}
-./out/client ${args} -t100 -D${backup} -w${path_test2}
+./out/client ${args} -t100 -D${backup} -w${path_test1} &
+./out/client ${args} -t100 -D${backup} -w${path_test2} &
 ./out/client ${args} -t100 -D${backup} -w${path_test3}

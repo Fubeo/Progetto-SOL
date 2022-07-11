@@ -72,7 +72,7 @@ void *stop_server(void *argv);
 void close_server();
 
 // ======================== Gestione richieste client ==========================
-void writeFile(int fd_client, char *request, bool filejustcreated);
+void writeFile(int fd_client, char *request, file_s *f);
 void createFile(int fd_client, char *request);
 void openFile(int fd_client, char *request);
 void openO_LOCK(int fd_client, char *request);
@@ -305,7 +305,7 @@ void *worker_function(){
     char *request = receiveStr(fd_client);
 
     fflush(stdout);
-    pcolor(BLUE, "\nReceived a new request by client %d: %s\n", fd_client, request);
+    pcolor(BLUE, "\nWorker %d received a new request by client %d: %s\n", gettid(), fd_client, request);
 
     if (!str_is_empty(request)) {
       switch (request[0]) {
@@ -484,14 +484,6 @@ void createFile(int fd_client, char *request) {
     perr("Richiesta non eseguita.\n");
     sendInteger(fd_client, SFILE_TOO_LARGE);
 
-  } else if (storable_files_left == 0) {
-    pwarn("Capacity miss detected: too many files already stored\n", fd_client);
-
-    sendInteger(fd_client, S_STORAGE_FULL);
-    free_space(fd_client, 'c', 0, cpid);
-    pwarn("Impossibile espellere file\n", fd_client);
-    perr("Richiesta non eseguita\n");
-
   } else {
     assert(hash_containsKey(tbl_has_opened, cpid));
 
@@ -505,19 +497,13 @@ void createFile(int fd_client, char *request) {
     // Acquisizione della lock
     pthread_mutex_lock(f->file_lock);
 
-    hash_insert(&tbl_file_path, filepath, f);	// lo memorizzo
-
-    file_open(&f, cpid); 											// lo apro
-
-    storable_files_left--;										// aggiorno il numero di file memorizzabili
-    list_insert(&storage_fifo, filepath, f);  // e infine lo aggiungo alla coda fifo
-
+    list_insert(&f->pidlist, cpid, NULL);   // aggiungo il pid del client alla lista degli openers
     sendInteger(fd_client, S_SUCCESS);			// notifico il client dell'esito positivo dell'operazione
 
 
     // scrittura del file
     char* r = receiveStr(fd_client);
-    writeFile(fd_client, r, true);
+    writeFile(fd_client, r, f);
     free(r);
 
   }
@@ -669,13 +655,6 @@ void openO_LOCK(int fd_client, char *request){
       perr("Richiesta non eseguita.\n");
       sendInteger(fd_client, SFILE_TOO_LARGE);
 
-    } else if (storable_files_left == 0) {
-      pwarn("System detected a CAPACITY MISS\n", fd_client);
-
-      sendInteger(fd_client, S_STORAGE_FULL);
-      free_space(fd_client, 'c', 0, cpid);
-      pwarn("Impossibile espellere file\n", fd_client);
-      perr("Richiesta non eseguita\n");
     } else {
       assert(hash_containsKey(tbl_has_opened, cpid));
 
@@ -687,26 +666,16 @@ void openO_LOCK(int fd_client, char *request){
         return;
       }
 
-      hash_insert(&tbl_file_path, filepath, f);	// lo memorizzo
-      file_open(&f, cpid); 											// lo apro
-
-      pthread_mutex_lock(&server_data_lock);
-      storable_files_left--;										// aggiorno il numero di file memorizzabili
-      pthread_mutex_unlock(&server_data_lock);
-
-      list_insert(&storage_fifo, filepath, f);  // lo aggiungo alla coda fifo
-
-      if(f->locked_by != NULL){
-        if(config.PRINT_LOG == 2) fprintf(stdout, "Client %s waiting to open file %s in locked mode\n", cpid, f->path);
-      }
-
+      // Acquisizione della lock
       pthread_mutex_lock(f->file_lock);
-      f->locked_by = cpid;
+
+      list_insert(&f->pidlist, cpid, NULL);   // aggiungo il pid del client alla lista degli openers
+      f->locked_by = cpid;                    // assegno o_lock al client
 
       sendInteger(fd_client, S_SUCCESS);			// notifico il client dell'esito positivo dell'operazione
 
       char* req = receiveStr(fd_client);
-      writeFile(fd_client, req, true);
+      writeFile(fd_client, req, f);
       free(req);
     }
 
@@ -856,7 +825,7 @@ void closeFile(int fd_client, char *request) {
     str_clearArray(&array, n);
 }
 
-void writeFile(int fd_client, char *request, bool filejustcreated) {
+void writeFile(int fd_client, char *request, file_s *f) {
     char **split = NULL;
     int n = str_split(&split, request, ":?");
     assert(n == 3);
@@ -881,6 +850,7 @@ void writeFile(int fd_client, char *request, bool filejustcreated) {
         return;
     }
 
+    /*
     if (!hash_containsKey(tbl_file_path, filepath)) {
 
     		fprintf(stdout, "FILE CHE NON ESISTE:\n%s/\n", filepath);
@@ -892,11 +862,9 @@ void writeFile(int fd_client, char *request, bool filejustcreated) {
         free(fcontent);
         str_clearArray(&split, n);
         return;
-    }
-
-    file_s *f = hash_getValue(tbl_file_path, filepath);
+    }*/
     if (!file_is_opened_by(f, cpid)) {
-        pwarn("Il client %d ha eseguito un operazione su un file non aperto\n", fd_client);
+        pwarn("Client %d tried to write a not opened file\n", fd_client);
 
 
         sendInteger(fd_client, SFILE_NOT_OPENED);
@@ -904,7 +872,7 @@ void writeFile(int fd_client, char *request, bool filejustcreated) {
         str_clearArray(&split, n);
         return;
     } else if (!file_is_empty(f)) {
-        pwarn("Il client %d ha eseguito una Write su un file non vuoto\n", fd_client);
+        pwarn("Client %d tried to write a not empty file\n", fd_client);
 
 
         sendInteger(fd_client, SFILE_NOT_EMPTY);
@@ -913,32 +881,17 @@ void writeFile(int fd_client, char *request, bool filejustcreated) {
         return;
     }
 
-    // Creazione di variabili utili a gestire una eventuale cancellazione del file da parte di altri client
     pthread_cond_t *cond = f->file_cond;
     pthread_mutex_t *mtx = f->file_lock;
 
-    // Acquisizione della lock
-    if(!filejustcreated && (f->locked_by == NULL || strcmp(f->locked_by, cpid) != 0)) pthread_mutex_lock(mtx);
-
-    if(!hash_containsKey(tbl_file_path, filepath)){ // Il worker controlla che il file non sia stato rimosso mentre aspettava la lock
-      if(config.PRINT_LOG == 2)
-          pwarn("Client with pid %s obtained lock, but file was removed\n", cpid);
-      if(config.PRINT_LOG == 1)
-          perr("Request not executed\n");
-      sendInteger(fd_client, SFILE_WAS_REMOVED);
-      free(fcontent);
-      str_clearArray(&split, n);
-      return;
-    }
-
     //da qui in poi il file viene inserito
-    if (fsize > storage_left) {  //se non ho spazio
+    if (fsize > storage_left || storable_files_left == 0) {  //se non ho spazio
       pwarn("Capacity miss detected: not enough storage space left\n", fd_client);
 
         sendInteger(fd_client, S_STORAGE_FULL);
         free_space(fd_client, option, fsize, cpid);
 
-        if (fsize > storage_left) {
+        if (fsize > storage_left || storable_files_left == 0) {
             perr("Non è stato possibile liberare spazio\n");
 
             free(fcontent);
@@ -950,18 +903,26 @@ void writeFile(int fd_client, char *request, bool filejustcreated) {
         printf("Spazio liberato!\n");
     }
 
+    // Scrivo il contenuto nel file
     assert(f->path != NULL && !str_is_empty(f->path));
     assert(storage_left <= config.MAX_STORAGE);
 
-    // Scrivo il contenuto nel file
+
+    hash_insert(&tbl_file_path, filepath, f);
     file_update(&f, fcontent, fsize);
+    storable_files_left--;										// aggiorno il numero di file memorizzabili
+    list_insert(&storage_fifo, filepath, f);  // e infine lo aggiungo alla coda fifo
+    int *a = (int *) hash_getValue(tbl_has_opened, cpid);
+    *a = *a + 1;
+
+    hash_updateValue(&tbl_has_opened, cpid, a, NULL);
 
     sendInteger(fd_client, S_SUCCESS);
 
     // Rilascio la lock
     if(f->locked_by == NULL || strcmp(f->locked_by, cpid) != 0) {
-      pthread_cond_signal(cond);
-      pthread_mutex_unlock(mtx);
+      pthread_cond_signal(f->file_cond);
+      pthread_mutex_unlock(f->file_lock);
     }
 
     str_clearArray(&split, n);
@@ -1043,6 +1004,7 @@ void readNFile(int fd_client, char *request) {
 
     int n_files_to_send;
     int ret = str_toInteger(&n_files_to_send, nf);
+    fprintf(stderr, "FILES TO SEND: %d\n", n_files_to_send);
     assert(ret != -1);
 
     list_node *params = malloc(sizeof(list_node));
