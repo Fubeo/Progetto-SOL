@@ -13,3 +13,7 @@ args="-f./tmp/serversock.sk"
 ./out/client ${args} -t100 -L -D${backup} -w${path_test2} &
 ./out/client ${args} -t100 -L -D${backup} -w${path_test3}
 ./out/client ${args} -t100 -d${download} -R
+./out/client ${args} -t100 -L -D${backup} -w${path_test1} &
+./out/client ${args} -t100 -L -D${backup} -w${path_test2} &
+./out/client ${args} -t100 -L -D${backup} -w${path_test3} &
+./out/client ${args} -t100 -l${path_test1}/cani/cani_1.png

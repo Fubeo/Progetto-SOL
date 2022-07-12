@@ -9,8 +9,8 @@
 #include "../customfile.h"
 #include "../customconfig.h"
 
-char* file_readline(FILE* file, char **buffer){
-  char* ret = fgets(*buffer, MAX_LEN, file);
+char* file_readline(FILE* file, char **buffer, int len){
+  char* ret = fgets(*buffer, len, file);
   str_remove_new_line(buffer);
   return ret;
 }
@@ -19,14 +19,12 @@ void *file_read_all(FILE* file){
     size_t file_size = file_getsize(file);
 
     void* buffer= malloc(sizeof(char) * file_size);
-    fprintf(stdout, "file size: %ld\n", file_size);
 
     if(buffer == NULL){
         fprintf(stderr, "Impossibile allocare spazio: file_read_all() malloc error\n");
         return NULL;
     }
     fread(buffer, sizeof(char), file_size, file);
-    fprintf(stdout, "file: %p\n", buffer);
 
     return buffer;
 }

@@ -17,7 +17,8 @@ server_lib = 	./lib/src/customsocket.c			\
 							./lib/src/customconfig.c			\
 							./lib/src/customfile.c				\
 							./lib/src/customprint.c				\
-							./lib/src/customhashtable.c
+							./lib/src/customhashtable.c		\
+							./lib/src/customlog.c
 
 client_lib = 	./lib/src/customsocket.c			\
 							./lib/src/customprint.c				\
@@ -32,11 +33,16 @@ client_lib = 	./lib/src/customsocket.c			\
 clean:
 		@rm -f tmp/download/* tmp/backup/* tmp/*.sk
 
+cleanlogs:
+		@rm -f logs/*
+
+cleanall: clean cleanlogs
+
 server: server.c
 		$(CC) $(INCLUDES) -o $(SERVER_OUT) server.c $(server_lib) $(LIBS) $(FLAGS)
 
 client: client.c
-		$(CC) $(INCLUDES) -o $(CLIENT_OUT) client.c $(client_lib) $(LIBS) $(FLAGS)
+		$(CC) $(INCLUDES) -o $(CLIENT_OUT) client0.c $(client_lib) $(LIBS) $(FLAGS)
 
 all: server client
 

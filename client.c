@@ -63,7 +63,7 @@ int closeFile(const char *pathname);
 int openFile(char *pathname, int flags);
 
 // -w e -W
-int write_file(const char *pathname, const char *dirname);
+int writeFile(const char *pathname, const char *dirname);
 void send_file_to_server(const char *backup_folder, char *file);
 
 // -R
@@ -74,6 +74,9 @@ int readFile(const char *pathname, void **buf, size_t *size);
 
 // -c
 int removeFile(const char *pathname);
+
+// -a
+int appendToFile(const char *pathname, void *buf, size_t size, const char *dirname);
 
 // -l
 int lockFile(const char*pathname);
@@ -131,15 +134,12 @@ void check_options(int argc, char *argv[]){
         exit(errno);
       }
 
-    } else if (str_starts_with(argv[i], "-d")) download_folder = ((argv[i]) += 2);
-
+    }
+    else if (str_starts_with(argv[i], "-d")) download_folder = ((argv[i]) += 2);
     else if (str_starts_with(argv[i], "-D")) backup_folder = ((argv[i]) += 2);
-
     else if (str_starts_with(argv[i], "-t")) str_toInteger(&sleep_between_requests, (argv[i]) += 2);
-
-    else if (str_starts_with(argv[i], "-p")) print_all = true;
-
-    else if (str_starts_with(argv[i], "-L")) requested_o_lock = true;
+    else if (str_starts_with(argv[i], "-p")) {print_all = true; (argv[i]) += 2;}
+    else if (str_starts_with(argv[i], "-L")) {requested_o_lock = true; (argv[i]) += 2;}
 
     else {
       if(str_starts_with(argv[i],"-r") || str_starts_with(argv[i],"-R")){
@@ -158,13 +158,11 @@ void check_options(int argc, char *argv[]){
       return;
   }
 
-  if(!found_rR && download_folder != NULL){
+  if(!found_rR && download_folder != NULL)
       perr("L opzione -d va usata congiuntamente con l opzione -r o -R");
-  }
 
-  if(!found_wW && backup_folder != NULL){
+  if(!found_wW && backup_folder != NULL)
       perr("L opzione -D va usata congiuntamente con l opzione -w o -W");
-  }
 }
 
 int open_connection(const char *sockname, int msec, const struct timespec abstime) {
@@ -277,8 +275,7 @@ int closeConnection(const char *sockname) {
 
 void execute_options(int argc, char *argv[], int sd){
   int opt, errcode;
-  while ((opt = getopt(argc, argv, ":h:W:w:R::r:c:l:u:")) != -1) {
-
+  while ((opt = getopt(argc, argv, ":h:W:w:R::r:c:l:u:a:")) != -1) {
     switch (opt) {
       case 'h': {
         print_commands();
@@ -421,6 +418,31 @@ void execute_options(int argc, char *argv[], int sd){
         break;
       }
 
+      case 'a': {
+
+        FILE* file = fopen("test/test2/3.txt","rb");
+        if(file == NULL){
+            return -1;
+        }
+        size_t file_size = file_getsize(file);
+
+        // LETTURA DEL FILE
+        void* file_content = file_read_all(file);
+        if(file_content == NULL){
+            fclose(file);
+            return -1;
+        }
+
+        if (appendToFile(optarg, file_content, file_size, backup_folder)!= 0) {
+          errcode = errno;
+          pcode(errcode, optarg);
+          perr( "AppendFile: error occurred on file %s\n", optarg);
+        } else if(print_all){
+          psucc("File %s successfully appended\n\n", optarg);
+        }
+        break;
+      }
+
       case 'l': {
         char **files = NULL;
         int n = str_split(&files, optarg, ",");
@@ -466,7 +488,7 @@ void send_file_to_server(const char *backup_folder, char *file) {
         return;
     }
 
-    if (write_file(file, backup_folder) != 0) {
+    if (writeFile(file, backup_folder) != 0) {
         fprintf(stderr, "Writefile: error sending file %s\n", file);
         errcode = errno;
         pcode(errcode, file);
@@ -637,7 +659,7 @@ int closeFile(const char *pathname) {
   return 0;
 }
 
-int write_file(const char *pathname, const char *dirname) {
+int writeFile(const char *pathname, const char *dirname) {
 
     if(pathname==NULL && dirname != NULL){
         errno=INVALID_ARG;
@@ -700,26 +722,26 @@ int write_file(const char *pathname, const char *dirname) {
 
         pwarn("CAPACITY MISS: Ricezione file espulsi dal Server...\n\n");
         while(((int)receiveInteger(sd))!=EOS_F){
-            char* filepath=receiveStr(sd);
+          char* filepath=receiveStr(sd);
 
-            char* filename=strrchr(filepath,'/')+1;
-            char *path = str_concat(dir, filename);
-            pwarn("Scrittura del file \"%s\" nella cartella \"%s\" in corso...\n", filename, dir);
+          char* filename=strrchr(filepath,'/')+1;
+          char *path = str_concat(dir, filename);
+          pwarn("Scrittura del file \"%s\" nella cartella \"%s\" in corso...\n", filename, dir);
 
-            void* buff;
-            size_t n;
-            receivefile(sd,&buff,&n);
-            FILE* file=fopen(path,"wb");
-            if(file==NULL){
-                perr("Impossibile creare un nuovo file, libera spazio!\n");
-            } else {
-                fwrite(buff, sizeof(char), n, file);
-                psucc("Download completato!\n\n");
-                fclose(file);
-            }
-            free(buff);
-            free(filepath);
-            free(path);
+          void* buff;
+          size_t n;
+          receivefile(sd,&buff,&n);
+          FILE* file=fopen(path,"wb");
+          if(file==NULL){
+              perr("Impossibile creare un nuovo file, libera spazio!\n");
+          } else {
+              fwrite(buff, sizeof(char), n, file);
+              psucc("Download completato!\n\n");
+              fclose(file);
+          }
+          free(buff);
+          free(filepath);
+          free(path);
         }
 
         free(dir);
@@ -848,6 +870,82 @@ int removeFile(const char *pathname) {
         return -1;
     }
     free(request);
+    return 0;
+}
+
+int appendToFile(const char *pathname, void *buf, size_t size, const char *dirname) {
+    errno=0;
+
+    char* client_pid=str_long_toStr(getpid());
+    char *request;
+    if (dirname != NULL)
+        request = str_concatn("a:", pathname,":", client_pid, "?y", NULL);
+    else
+        request = str_concatn("a:", pathname,":", client_pid, "?n" ,NULL);
+
+    //invio la richiesta
+    sendStr(sd, request);
+    sendn(sd, buf, size);//invio il contenuto da appendere
+
+    free(client_pid);
+    free(request);
+
+    int status = (int)receiveInteger(sd);
+
+    if(status==S_SUCCESS){
+        return 0;
+    }
+
+    if(status != S_STORAGE_FULL){
+        errno=status;
+        return -1;
+    }
+
+    if(dirname != NULL){
+        char* dir=NULL;
+
+        if (!str_ends_with(dirname, "/")) {
+            dir = str_concat(dirname, "/");
+        } else {
+            dir = str_create(dirname);
+        }
+
+        pwarn("CAPACITY MISS: Ricezione file espulsi dal Server...\n\n");
+        while(((int)receiveInteger(sd))!=EOS_F){
+            char* filepath=receiveStr(sd);
+
+            char* filename=strrchr(filepath,'/')+1;
+            char *path = str_concat(dir, filename);
+            pwarn("Scrittura del file \"%s\" nella cartella \"%s\" in corso...\n", filename, dir);
+
+            void* buff;
+            size_t n;
+            receivefile(sd,&buff,&n);
+            FILE* file=fopen(path,"wb");
+            if(file==NULL){
+                perr("Impossibile creare il file %s, libera spazio sul disco!\n", filename);
+            } else {
+                fwrite(buff, sizeof(char), n, file);
+                fclose(file);
+            }
+
+            free(buff);
+            free(path);
+            free(filepath);
+            psucc("Download completed!\n\n");
+        }
+
+        free(dir);
+    }else{
+        receiveInteger(sd); //attendo l EOS
+    }
+
+    status = (int)receiveInteger(sd);
+    if(status != S_SUCCESS) {
+        errno = status;
+        return -1;
+    }
+
     return 0;
 }
 

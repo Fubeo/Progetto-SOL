@@ -36,6 +36,7 @@ void settings_default(settings* s){
     s->MAX_STORABLE_FILES = 100;
     s->SOCK_PATH = str_create("tmp/serversock.sk");
     s->PRINT_LOG = 1;
+    s->LOGS_PATH = str_create("log/");
 }
 
 void setConfigfor(settings *s, char *key, char *value) {
@@ -88,6 +89,10 @@ void setConfigfor(settings *s, char *key, char *value) {
         }
 
         s->PRINT_LOG = converted_v;
+    } else if(str_equals(key, "LOGS_PATH")) {
+      free(s->LOGS_PATH);
+      char *new_path = str_clean(value);
+      s->LOGS_PATH = str_create(new_path);
     }
 }
 
@@ -99,18 +104,22 @@ void settings_load(settings *s, char *path) {
     } else {
         c = fopen(path, "r");
     }
-    if(c==NULL){
+    if(c == NULL){
         settings_default(s);
         return;
     }
 
-    if(s->SOCK_PATH==NULL){
-        s->SOCK_PATH= str_create("./tmp/serversock.sk");
+    if(s->SOCK_PATH == NULL){
+        s->SOCK_PATH = str_create("tmp/serversock.sk");
+    }
+
+    if(s->SOCK_PATH == NULL){
+        s->SOCK_PATH = str_create("logs/");
     }
 
     char **array = NULL;
-    char *line = malloc(MAX_LEN*sizeof(char));
-    while (file_readline(c, &line)) {
+    char *line = malloc(CONFIG_MAX_ROW_LENGTH*sizeof(char));
+    while (file_readline(c, &line, CONFIG_MAX_ROW_LENGTH)) {
         char* cleaned_line = str_clean(line);
         if (!str_starts_with(cleaned_line, "#") && !str_is_empty(cleaned_line)) {
             int n = str_splitn(&array, cleaned_line, "=#", 3);
@@ -125,6 +134,7 @@ void settings_load(settings *s, char *path) {
 
 void settings_free(settings *s) {
     free(s->SOCK_PATH);
+    free(s->LOGS_PATH);
 }
 
 void settings_print(settings s) {
@@ -137,11 +147,14 @@ void settings_print(settings s) {
     fprintf(stdout, "N_WORKERS:\t\t\t\t");
     printf("%u\n", s.N_WORKERS);
 
+    fprintf(stdout, "SOCK_PATH:\t\t\t\t");
+    printf("%s\n", s.SOCK_PATH);
+
     fprintf(stdout, "PRINT_LOG:\t\t\t\t");
     printf("%d\n", s.PRINT_LOG);
 
-    fprintf(stdout, "SOCK_PATH:\t\t\t\t");
-    printf("%s\n", s.SOCK_PATH);
+    fprintf(stdout, "LOG_PATH:\t\t\t\t");
+    printf("%s\n", s.LOGS_PATH);
 
     //per rimuovere i warnings
     pwarn("");
