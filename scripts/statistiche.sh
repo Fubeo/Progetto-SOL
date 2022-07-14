@@ -1,0 +1,121 @@
+#!/bin/bash
+
+set -o pipefail
+
+if [ $# -eq 0 ];
+  then
+    if [ -d logs ];
+      then
+        LOG_FILE=logs/$(ls logs | grep -E '*' | tail -n1) || { echo "No log file could be found inside logs/ directory. Aborting script."; exit 1; }
+    else # log
+        echo "No log file could be found. Aborting script."
+        exit 1
+    fi
+else
+    LOG_FILE=$1
+fi
+
+# unsetting pipefail
+set +o pipefail
+
+COLOR_BOLD_CYAN="\033[1;36m"
+COLOR_YELLOW="\x1B[33m"
+COLOR_BOLD_YELLOW="\033[1;33m"
+COLOR_STANDARD="\033[0m"
+
+# =================================== READ =====================================
+echo -e "\n${COLOR_BOLD_CYAN}=== READ STATS ===========================================================${COLOR_STANDARD}\n"
+
+n_reads=$(grep " read " -c $LOG_FILE)
+tot_bytes_read=$(grep " read " $LOG_FILE | grep -Eo "\[[0-9]*\]" | grep -Eo "[0-9]*" | { sum=0; while read num; do ((sum+=num)); done; echo $sum; } )
+
+echo -e  "${COLOR_BOLD_YELLOW}Number of successful read operations:${COLOR_STANDARD} ${n_reads}"
+if [ ${n_reads} -gt 0 ]; then
+    mean_bytes_read=$(echo "scale=4; ${tot_bytes_read} / ${n_reads}" | bc -l)
+fi
+
+echo -e "${COLOR_BOLD_YELLOW}Total number of bytes read by clients:${COLOR_STANDARD} $(( tot_bytes_read + tot_bytes_readNFiles))"
+if (( n_reads + n_readNFiles > 0 )); then
+    mean_bytes_gen_read=$(echo "scale=4; ($tot_bytes_read) / ($n_reads)" | bc -l )
+    echo -e "${COLOR_BOLD_YELLOW}Average number of bytes read by clients:${COLOR_STANDARD} ${mean_bytes_gen_read}"
+fi
+
+
+# ================================== WRITE =====================================
+echo -e "\n\n${COLOR_BOLD_CYAN}=== WRITE STATS ==========================================================${COLOR_STANDARD}\n"
+
+n_write=$(grep " written " -c $LOG_FILE)
+tot_written_bytes=$(grep " written " $LOG_FILE | grep -Eo "\[[0-9]*\]" | grep -Eo "[0-9]*" | { sum=0; while read num; do ((sum+=num)); done; echo $sum; } )
+n_appends=$(grep " appended " -c $LOG_FILE)
+tot_appended_bytes=$(grep " appended " $LOG_FILE | grep -Eo "\[[0-9]*\]" | grep -Eo "[0-9]*" | { sum=0; while read num; do ((sum+=num)); done; echo $sum; } )
+
+echo -e  "${COLOR_BOLD_YELLOW}Number of successful write operations:${COLOR_STANDARD} ${n_write}"
+if [ ${n_write} -gt 0 ]; then
+  mean_bytes_written=$(echo "scale=4; ${tot_written_bytes} / ${n_write}" | bc -l)
+fi
+
+
+echo -e "${COLOR_BOLD_YELLOW}Total number of bytes written by clients:${COLOR_STANDARD} $(( tot_written_bytes + tot_appended_bytes))"
+if (( n_appends + n_write > 0 )); then
+    average_written_bytes=$(echo "scale=4; ($tot_appended_bytes + $tot_written_bytes) / ($n_appends + $n_write)" | bc -l )
+    echo -e  "${COLOR_BOLD_YELLOW}Average number of bytes written by clients:${COLOR_STANDARD} ${average_written_bytes}"
+fi
+
+echo ""
+
+echo -e "${COLOR_BOLD_YELLOW}Number of successful append operations:${COLOR_STANDARD} ${n_appends}"
+if [[ ${n_appends} -gt 0 ]]; then
+  average_appended_bytes=$(echo "scale=4; ${tot_appended_bytes} / ${n_appends}" | bc -l)
+  echo -e "${COLOR_BOLD_YELLOW}Average number of bytes written by appendToFile:${COLOR_STANDARD} ${average_appended_bytes}"
+fi
+
+
+# ================================ VARIOUS STATS ===============================
+
+echo -e "\n\n${COLOR_BOLD_CYAN}=== VARIOUS STATS ========================================================${COLOR_STANDARD}\n"
+
+n_create=$(grep " created file" -c $LOG_FILE)
+n_createlocks=$(grep " created with lock " -c $LOG_FILE)
+n_openlocks=$(grep " opened with lock " -c $LOG_FILE)
+n_locks=$(grep " locked " -c $LOG_FILE)
+n_unlocks=$(grep " unlocked " -c $LOG_FILE)
+n_close=$(grep " closed " -c $LOG_FILE)
+max_size=$(grep "Max stored " ${LOG_FILE} | grep -Eo "[0-9]+" | { max=0; while read num; do if (( max<num )); then ((max=num)); fi; done; echo $max; } )
+max_files=$(grep "Max number " ${LOG_FILE} | grep -Eo "[0-9]+" | { max=0; while read num; do if (( max<num )); then ((max=num)); fi; done; echo $max; } )
+max_conn=$(grep "Max connected " ${LOG_FILE} | grep -Eo "[0-9]+" | { max=0; while read num; do if (( max<num )); then ((max=num)); fi; done; echo $max; } )
+n_eject=$(grep " ejected " -c $LOG_FILE)
+
+echo -e  "${COLOR_BOLD_YELLOW}Number of create operations:${COLOR_STANDARD} $n_create"
+echo -e  "${COLOR_BOLD_YELLOW}Number of create-lock operations:${COLOR_STANDARD} $n_createlocks"
+echo -e  "${COLOR_BOLD_YELLOW}Number of open-lock operations:${COLOR_STANDARD} $n_openlocks"
+echo -e  "${COLOR_BOLD_YELLOW}Number of lock operations:${COLOR_STANDARD} $n_locks"
+echo -e  "${COLOR_BOLD_YELLOW}Number of unlock operations:${COLOR_STANDARD} $n_unlocks"
+echo -e  "${COLOR_BOLD_YELLOW}Number of close operations:${COLOR_STANDARD} $n_close"
+echo -e  "${COLOR_BOLD_YELLOW}Number of cache replacements:${COLOR_STANDARD} $n_eject"
+
+
+# getting number of requests satisfied by each thread
+echo -e "\n${COLOR_BOLD_YELLOW}Number of requests managed by each worker:${COLOR_STANDARD}"
+
+grep -Eo "Worker [0-9]+: Received" ${LOG_FILE} | grep -Eo "[0-9]+:" | sort -u | sed s/:/"\n"/g > tmp/x
+tids=()
+i=0
+for str in $(cat tmp/x)
+do
+  tids+=($str)
+  let "i++"
+done
+rm tmp/x
+
+n_tids=$(grep -Eo "Worker [0-9]+: Received" ${LOG_FILE} | grep -Eo "[0-9]+" | sort -u | grep -c '')
+
+for ((i=0; i<$n_tids; i++)); do
+  n_req=$(grep -c "Worker ${tids[$i]}: Received" ${LOG_FILE})
+  echo -e "${COLOR_YELLOW}Worker ${COLOR_STANDARD}${tids[$i]}${COLOR_YELLOW} managed ${COLOR_STANDARD}$n_req${COLOR_YELLOW} requests${COLOR_STANDARD}"
+done
+
+echo ""
+
+echo -e  "${COLOR_BOLD_YELLOW}Max stored data size (Mbytes):${COLOR_STANDARD} $max_size"
+echo -e  "${COLOR_BOLD_YELLOW}Max number of stored files:${COLOR_STANDARD} $max_files"
+echo -e  "${COLOR_BOLD_YELLOW}Max number of simultaneously connected clients:${COLOR_STANDARD} $max_conn"

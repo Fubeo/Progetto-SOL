@@ -32,11 +32,16 @@ size_t convert_str(char *s) {
 
 void settings_default(settings* s){
     s->N_WORKERS = 5;
-    s->MAX_STORAGE = 209715200;
+    s->MAX_STORAGE = 50000;
     s->MAX_STORABLE_FILES = 100;
     s->SOCK_PATH = str_create("tmp/serversock.sk");
     s->PRINT_LOG = 1;
     s->LOGS_PATH = str_create("log/");
+    //per rimuovere i warnings
+    pwarn("");
+    pcode(0, NULL);
+    psucc("");
+    pcolor(STANDARD, "");
 }
 
 void setConfigfor(settings *s, char *key, char *value) {
@@ -55,6 +60,7 @@ void setConfigfor(settings *s, char *key, char *value) {
         s->N_WORKERS = converted_v;
     } else if (str_equals(key, "MAX_STORAGE")) {
         errno = 0;
+        fprintf(stdout, "MAX STORAGE: %s\n", value);
         sp = convert_str(value);
         if (errno == ERROR_CONV) {
             fprintf(stderr, "Error on parsing [%s]: default value set\n", key);
@@ -138,26 +144,21 @@ void settings_free(settings *s) {
 }
 
 void settings_print(settings s) {
-    fprintf(stdout, "MAX_STORABLE_FILES:\t\t\t");
+    fprintf(stdout, "MAX_STORABLE_FILES:\t\t\t\t\t");
     printf("%u\n", s.MAX_STORABLE_FILES);
 
-    fprintf(stdout, "MAX_STORAGE (in bytes):\t\t\t");
+    fprintf(stdout, "MAX_STORAGE (in bytes):\t\t\t\t\t");
     printf("%lu\n", s.MAX_STORAGE);
 
-    fprintf(stdout, "N_WORKERS:\t\t\t\t");
+    fprintf(stdout, "N_WORKERS:\t\t\t\t\t\t");
     printf("%u\n", s.N_WORKERS);
 
-    fprintf(stdout, "SOCK_PATH:\t\t\t\t");
+    fprintf(stdout, "SOCK_PATH:\t\t\t\t\t\t");
     printf("%s\n", s.SOCK_PATH);
 
-    fprintf(stdout, "PRINT_LOG:\t\t\t\t");
+    fprintf(stdout, "PRINT_LOG:\t\t\t\t\t\t");
     printf("%d\n", s.PRINT_LOG);
 
-    fprintf(stdout, "LOG_PATH:\t\t\t\t");
+    fprintf(stdout, "LOG_PATH:\t\t\t\t\t\t");
     printf("%s\n", s.LOGS_PATH);
-
-    //per rimuovere i warnings
-    pwarn("");
-    pcode(0, NULL);
-    psucc("");
 }

@@ -31,31 +31,34 @@ client_lib = 	./lib/src/customsocket.c			\
 .PHONY: all
 
 clean:
-		@rm -f tmp/download/* tmp/backup/* tmp/*.sk
+		@rm -f tmp/download/* tmp/backup/* tmp/*.sk out/*
 
 cleanlogs:
 		@rm -f logs/*
 
 cleanall: clean cleanlogs
 
+stats:
+		./scripts/statistiche.sh
+
 server: server.c
 		$(CC) $(INCLUDES) -o $(SERVER_OUT) server.c $(server_lib) $(LIBS) $(FLAGS)
 
 client: client.c
-		$(CC) $(INCLUDES) -o $(CLIENT_OUT) client0.c $(client_lib) $(LIBS) $(FLAGS)
+		$(CC) $(INCLUDES) -o $(CLIENT_OUT) client.c $(client_lib) $(LIBS) $(FLAGS)
 
 all: server client
 
-test1: server client clean
+test1: clean server client
 		clear
 		valgrind $(VALGRIND_FLAGS) $(SERVER_OUT) -c./config/test1.ini &
-		sh script/test1.sh
+		sh scripts/test1.sh
 		@killall -TERM -w memcheck-amd64-
-		@printf "\ntest1 terminato\n"
+		@printf "\ntest1 terminated\n"
 
-testlock: server client clean
+testlock: clean server client clean
 		clear
 		valgrind $(VALGRIND_FLAGS) $(SERVER_OUT) -c./config/testlock.ini &
-		sh script/testlock.sh
+		sh scripts/testlock.sh
 		@killall -TERM -w memcheck-amd64-
-		@printf "\ntestlock terminato\n"
+		@printf "\ntestlock terminated\n"

@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 #include <stdbool.h>
 #include <pthread.h>
 #include <stdio.h>
@@ -12,11 +13,13 @@ typedef struct{
 } logfile;
 
 logfile* log_init(char *logsdir);
-void log_addline(logfile *lf, char *line);
+char *generate_logpath(char *logsdir);
+void log_addline(logfile *lf, char *s);
 void log_addrequest(logfile *lf, char *request);
 void log_addcloseconnection(logfile *lf, char *cpid);
 void log_addread(logfile *lf, char *cpid, char *pathname, size_t size);
 void log_addwrite(logfile *lf, char *cpid, char *pathname, size_t size);
+void log_addappend(logfile *lf, char *cpid, char *pathname, size_t size);
 void log_addcreate(logfile *lf, char *cpid, char *pathname);
 void log_addopen(logfile *lf, char *cpid, char *pathname);
 void log_addcreatelock(logfile *lf, char *cpid, char *pathname);
@@ -27,6 +30,7 @@ void log_addclose(logfile *lf, char *cpid, char *pathname);
 void log_addunlock(logfile *lf, char *cpid, char *pathname);
 void log_addlock(logfile *lf, char *cpid, char *pathname);
 void log_adderror(logfile *lf, char *cpid, char *msg);
+void log_addStats(logfile *lf, size_t msds, size_t msf, int mcc);
 void log_free(logfile *lf);
 
 #endif

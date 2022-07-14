@@ -39,7 +39,7 @@ int sd = -1;
 char *sockfilename = NULL;        // -f
 char *download_folder = NULL;     // -d
 char *backup_folder = NULL;       // -D
-bool print_all = false;           	// -p
+bool print_all = true;           	// -p
 int sleep_between_requests = 0;   // -t
 bool requested_o_lock = false;    // -L
 
@@ -109,8 +109,6 @@ void print_commands() {
     printf("\t-D <dir>\t\tWrites into directory <dir> all the files expelled by the server. \033[0;31m This option must follow one of -w or -W. \033[0m\n");
     printf("\t-R[<num>] \t\tReads <num> files from the server. If <num> is not specified, reads all files from the server. \033[0;31m There must be no space bewteen -R and <num>.\033[0m\n");
     printf("\t-r <file>{,<files>}\tReads the files specified in the argument list from the server.\n");
-    printf("\t-a <file>,<file> \tSends the second argument to the server, which will concat it with the first argument file.\n");
-    printf("\t-o <file>{,<files>}\tOpens the files specified in the argument list from the server.\n");
     printf("\t-d <dir> \t\tWrites into directory <dir> the files read from server. If it not specified, files read from server will be lost. \033[0;31m This option must follow one of -r or -R. \033[0m\n");
     printf("\t-t <time> \t\tSets the waiting time (in milliseconds) between requests. Default is 0.\n");
     printf("\t-p \t\t\tIf set, every operation will be printed to stdout. \033[0;31m This option must be set at most once. \033[0m\n");
@@ -165,223 +163,6 @@ void check_options(int argc, char *argv[]){
 
   if(!found_wW && backup_folder != NULL)
       perr("L opzione -D va usata congiuntamente con l opzione -w o -W");
-}
-
-void execute_options(int argc, char *argv[], int sd){
-  int opt, errcode;
-  while ((opt = getopt(argc, argv, ":h:W:w:R::r:c:l:u:a:o:")) != -1) {
-
-    switch (opt) {
-      case 'h': {
-        print_commands();
-        break;
-      }
-
-      case 'W': {
-        char **files = NULL;
-        int n = str_split(&files, optarg, ",");
-        for (int i = 0; i < n; i++) {
-          files[i] = realpath(files[i], NULL);
-          send_file_to_server(backup_folder, files[i]);
-          usleep(sleep_between_requests * 1000);
-        }
-        break;
-      }
-
-      case 'w': {
-        char **array = NULL;
-        int n_files = -1;
-
-        int count;
-        int n = str_split(&array, optarg, ",");
-
-        if (n > 2) {
-          perr("Troppi argomenti per il comando -w dirname[,n=x]\n");
-          break;
-        }
-
-        if((n == 2) && str_toInteger(&n_files, array[1]) != 0){
-          perr("%s is not a number\n", optarg);
-          break;
-        }
-
-        // lettura dei path dei files nella directory
-        char **files = NULL;
-        count = file_nscanAllDir(&files, array[0], n_files);
-
-        for (int i = 0; i < count; i++) {
-          send_file_to_server(backup_folder, files[i]);
-          usleep(sleep_between_requests * 1000);
-        }
-
-        break;
-      }
-
-      case 'o': {
-        char **files = NULL;
-        int n = str_split(&files, optarg, ",");
-        for (int i = 0; i < n; i++) {
-          if (openFile(files[i], O_OPEN) != 0) {
-            errcode = errno;
-            pcode(errcode, files[i]);
-            perr( "OpenFile: error occurred on file %s\n", files[i]);
-          } else if(print_all){
-            psucc("File %s successfully opened\n\n", files[i]);
-          }
-          usleep(sleep_between_requests * 1000);
-        }
-        str_clearArray(&files, n);
-        break;
-      }
-
-      case 'R': {
-          int n = 0;
-          if (optarg != NULL) {
-              if (str_toInteger(&n, optarg) != 0) {
-                  perr("%s is not a number\n", optarg);
-                  break;
-              }
-          }
-          if (readNFiles(n, download_folder) != 0) {
-              errcode = errno;
-              pcode(errcode, NULL);
-          } else if(print_all){
-              if(n == 0)
-              psucc("%d files received\n\n", n);
-          }
-          break;
-      }
-
-      case 'r': {
-          char **files = NULL;
-          int n = str_split(&files, optarg, ",");
-          void *buff;
-          size_t size;
-          for (int i = 0; i < n; i++) {
-              if(openFile(files[i], O_OPEN) == 0) { // Apertura del file
-                  if (readFile(files[i], &buff, &size) != 0) {    // Lettura del file
-                      perr("ReadFile: Error on file %s\n", files[i]);
-                      errcode = errno;
-                      pcode(errcode, files[i]);
-                  } else {    // a questo punto o salvo i file nella cartella dirname (se diversa da NULL) o invio un messaggio di conferma
-                      char *filename = strrchr(files[i], '/') + 1;
-                      if (download_folder != NULL) {
-                          if (!str_ends_with(download_folder, "/")) {
-                              download_folder = str_concat(download_folder, "/");
-                          }
-                          char *path = str_concatn(download_folder, filename, NULL);
-                          FILE *file = fopen(path, "wb");
-                          if (file == NULL) {
-                              perr("Cartella %s sbagliata\n", path);
-                              download_folder = NULL;
-                          } else {
-                              if (fwrite(buff, sizeof(char), size, file) == 0) {  // scrivo il file ricevuto nella cartella download_folder
-                                  perr("Errore nella scrittura di %s\n"
-                                       "I successivi file verranno ignorati\n", path);
-                                  download_folder = NULL;
-                              } else if (print_all) {
-                                  pcolor(GREEN, "File \"%s\" scritto nella cartella: ", filename);
-                                  printf("%s\n\n", path);
-                              }
-                              fclose(file);
-                          }
-                          free(path);
-                      } else if (print_all) {
-                          psucc("Ricevuto file: ");
-                          printf("%s\n\n", filename);
-                      }
-                      free(buff);
-                }
-            }else{
-                perr("openFile: Errore nell apertura del file %s\n", files[i]);
-                errcode = errno;
-                pcode(errcode, files[i]);
-              }
-            usleep(sleep_between_requests * 1000);
-          }
-
-        str_clearArray(&files, n);
-        break;
-      }
-
-      case 'c': {
-        char **files = NULL;
-        int n = str_split(&files, optarg, ",");
-        for (int i = 0; i < n; i++) {
-          if (removeFile(files[i]) != 0) {
-            errcode = errno;
-            pcode(errcode, files[i]);
-            perr( "RemoveFile: error occurred on file %s\n", files[i]);
-          } else if(print_all){
-            psucc("File %s successfully removed\n\n", files[i]);
-          }
-          usleep(sleep_between_requests * 1000);
-        }
-        str_clearArray(&files, n);
-        break;
-      }
-
-      case 'a': {
-        char **files = NULL;
-        int n = str_split(&files, optarg, ",");
-        FILE* file = fopen(files[1],"rb");
-        if(file == NULL){
-            return;
-        }
-        size_t file_size = file_getsize(file);
-
-        // Lettura del file
-        void* file_content = file_read_all(file);
-        if(file_content == NULL){
-            fclose(file);
-            str_clearArray(&files, n);
-            return;
-        }
-        fclose(file);
-
-        if (appendToFile(files[0], file_content, file_size, backup_folder)!= 0) {
-          errcode = errno;
-          pcode(errcode, optarg);
-          perr( "AppendFile: error occurred on file %s\n", optarg);
-        } else if(print_all){
-          psucc("File %s successfully appended\n\n", optarg);
-        }
-        free(file_content);
-        str_clearArray(&files, n);
-        break;
-      }
-
-      case 'l': {
-        char **files = NULL;
-        int n = str_split(&files, optarg, ",");
-        for (int i = 0; i < n; i++) {
-          files[i] = realpath(files[i], NULL);
-          lockFile(files[i]);
-          usleep(sleep_between_requests * 1000);
-        }
-        str_clearArray(&files, n);
-        break;
-      }
-
-      case 'u': {
-        char **files = NULL;
-        int n = str_split(&files, optarg, ",");
-        for (int i = 0; i < n; i++) {
-          files[i] = realpath(files[i], NULL);
-          unlockFile(files[i]);
-          usleep(sleep_between_requests * 1000);
-        }
-        str_clearArray(&files, n);
-        break;
-      }
-
-      default: {
-        printf("The requested operation is not supported\n");
-        break;
-      }
-    }
-  }
-
 }
 
 int open_connection(const char *sockname, int msec, const struct timespec abstime) {
@@ -465,7 +246,7 @@ int closeConnection(const char *sockname) {
         return -1;
     }
     char* client_pid = str_long_toStr(getpid());
-    char* request = str_concat("e:", client_pid);
+    char* request = str_concat("e:",client_pid);
 
     sendn(sd, request, strlen(request));
     free(client_pid);
@@ -475,12 +256,13 @@ int closeConnection(const char *sockname) {
 
     if(status != S_SUCCESS){
       if(status == SFILES_FOUND_ON_EXIT){
-        if(print_all) pcolor(CYAN, "Server is closing files of client %d\n", gettid());
+        if(print_all) pcolor(CYAN, "Server will close files still opened\n");
       }
     }
 
     if(close(sd) != 0){
-        perr("Error closing socket\nErrcode: %s\n\n", strerror(errno));
+        perr("Error closing socket\n"
+             "Codice errore: %s\n\n", strerror(errno));
         return -1;
     }
     connected = false;
@@ -491,29 +273,230 @@ int closeConnection(const char *sockname) {
     return 0;
 }
 
+void execute_options(int argc, char *argv[], int sd){
+  int opt, errcode;
+  while ((opt = getopt(argc, argv, ":h:W:w:R::r:c:l:u:a:")) != -1) {
+    switch (opt) {
+      case 'h': {
+        print_commands();
+        break;
+      }
+
+      case 'W': {
+        char **files = NULL;
+        int n = str_split(&files, optarg, ",");
+        for (int i = 0; i < n; i++) {
+          files[i] = realpath(files[i], NULL);
+          send_file_to_server(backup_folder, files[i]);
+          usleep(sleep_between_requests * 1000);
+        }
+        str_clearArray(&files, n);
+        if(requested_o_lock)requested_o_lock = false;
+        break;
+      }
+
+      case 'w': {
+        char **array = NULL;
+        int n_files = -1;
+
+        int count;
+        int n = str_split(&array, optarg, ",");
+
+        if (n > 2) {
+          perr("Troppi argomenti per il comando -w dirname[,n=x]\n");
+          break;
+        }
+
+        if (n == 2)
+          if(str_toInteger(&n_files, array[1]) != 0){
+            perr("%s non è un numero\n", optarg);
+            break;
+          }
+
+        // lettura dei path dei files nella directory
+        char **files = NULL;
+        count = file_nscanAllDir(&files, array[0], n_files);
+
+        for (int i = 0; i < count; i++) {
+          send_file_to_server(backup_folder, files[i]);
+          usleep(sleep_between_requests * 1000);
+        }
+
+        if(requested_o_lock)requested_o_lock = false;
+        str_clearArray(&array, n);
+        //str_clearArray(&files, count);
+        break;
+      }
+
+      case 'R': {
+        fprintf(stdout, "READN\n");
+          int n = 0;
+          if (optarg != NULL) {
+              optarg++;
+              if (str_toInteger(&n, optarg) != 0) {
+                  perr("%s non è un numero\n", optarg);
+                  break;
+              }
+          }
+          if (readNFiles(n, download_folder) != 0) {
+              errcode = errno;
+              pcode(errcode, NULL);
+          } else if(print_all){
+              if(n == 0)
+              psucc("Ricevuti %d file\n\n", n);
+          }
+          break;
+      }
+
+      case 'r': {
+          char **files = NULL;
+          int n = str_split(&files, optarg, ",");
+          void *buff;
+          size_t size;
+          for (int i = 0; i < n; i++) {
+              fprintf(stdout, "FILE: %s\n", files[i]);
+              if(openFile(files[i], O_OPEN) == 0) { // Apertura del file
+                  if (readFile(files[i], &buff, &size) != 0) {    // Lettura del file
+                      perr("ReadFile: Errore nel file %s\n", files[i]);
+                      errcode = errno;
+                      pcode(errcode, files[i]);
+                  } else {    // a questo punto o salvo i file nella cartella dirname (se diversa da NULL) o invio un messaggio di conferma
+                      char *filename = strrchr(files[i], '/') + 1;
+                      if (download_folder != NULL) {
+                          if (!str_ends_with(download_folder, "/")) {
+                              download_folder = str_concat(download_folder, "/");
+                          }
+                          char *path = str_concatn(download_folder, filename, NULL);
+                          FILE *file = fopen(path, "wb");
+                          if (file == NULL) {
+                              perr("Cartella %s sbagliata\n", path);
+                              download_folder = NULL;
+                          } else {
+                              if (fwrite(buff, sizeof(char), size, file) == 0) {  // scrivo il file ricevuto nella cartella download_folder
+                                  perr("Errore nella scrittura di %s\n"
+                                       "I successivi file verranno ignorati\n", path);
+                                  download_folder = NULL;
+                              } else if (print_all) {
+                                  pcolor(GREEN, "File \"%s\" scritto nella cartella: ", filename);
+                                  printf("%s\n\n", path);
+                              }
+                              fclose(file);
+                          }
+                          free(path);
+                      } else if (print_all) {
+                          psucc("Ricevuto file: ");
+                          printf("%s\n\n", filename);
+                      }
+                      free(buff);
+                }
+            }else{
+                perr("openFile: Errore nell apertura del file %s\n", files[i]);
+                errcode = errno;
+                pcode(errcode, files[i]);
+              }
+            usleep(sleep_between_requests * 1000);
+          }
+
+        str_clearArray(&files, n);
+        break;
+      }
+
+      case 'c': {
+        char **files = NULL;
+        int n = str_split(&files, optarg, ",");
+        for (int i = 0; i < n; i++) {
+          if (removeFile(files[i]) != 0) {
+            errcode = errno;
+            pcode(errcode, files[i]);
+            perr( "RemoveFile: error occurred on file %s\n", files[i]);
+          } else if(print_all){
+            psucc("File %s successfully removed\n\n", files[i]);
+          }
+          usleep(sleep_between_requests * 1000);
+        }
+        str_clearArray(&files, n);
+        break;
+      }
+
+      case 'a': {
+
+        FILE* file = fopen("test/test2/3.txt","rb");
+        if(file == NULL){
+            return;
+        }
+        size_t file_size = file_getsize(file);
+
+        // LETTURA DEL FILE
+        void* file_content = file_read_all(file);
+        if(file_content == NULL){
+            fclose(file);
+            return;
+        }
+
+        if (appendToFile(optarg, file_content, file_size, backup_folder)!= 0) {
+          errcode = errno;
+          pcode(errcode, optarg);
+          perr( "AppendFile: error occurred on file %s\n", optarg);
+        } else if(print_all){
+          psucc("File %s successfully appended\n\n", optarg);
+        }
+        break;
+      }
+
+      case 'l': {
+        char **files = NULL;
+        int n = str_split(&files, optarg, ",");
+        for (int i = 0; i < n; i++) {
+          files[i] = realpath(files[i], NULL);
+          lockFile(files[i]);
+          usleep(sleep_between_requests * 1000);
+        }
+        str_clearArray(&files, n);
+        break;
+      }
+
+      case 'u': {
+        char **files = NULL;
+        int n = str_split(&files, optarg, ",");
+        for (int i = 0; i < n; i++) {
+          files[i] = realpath(files[i], NULL);
+          unlockFile(files[i]);
+          usleep(sleep_between_requests * 1000);
+        }
+        str_clearArray(&files, n);
+        break;
+      }
+
+      default: {
+        printf("The requested operation is not supported\n");
+        break;
+      }
+    }
+  }
+
+}
+
 void send_file_to_server(const char *backup_folder, char *file) {
     int errcode;
-    char *f = malloc(strlen(file)*sizeof(char));
     if(print_all) printf("Sending %s\n", file);
     int o;
     if(requested_o_lock) o = O_LOCK;
     else o = O_CREATE;
 
     if (openFile(file, o) != 0) {
-        errcode = errno;
-        pcode(errcode, f);
-        free(f);
+        pcode(errno, file);
         return;
     }
 
     if (writeFile(file, backup_folder) != 0) {
         fprintf(stderr, "Writefile: error sending file %s\n", file);
         errcode = errno;
-        pcode(errcode, f);
+        pcode(errcode, file);
     } else if(print_all){
         psucc("File \"%s\" successfully sent\n\n", strrchr(file, '/') + 1);
     }
-    free(f);
+
+
 }
 
 int openFile(char *pathname, int flags) {
@@ -535,9 +518,6 @@ int openFile(char *pathname, int flags) {
           response = (int)receiveInteger(sd);
 
           free(cmd);
-
-          if(response == SFILE_ALREADY_OPENED) response = S_SUCCESS;
-
           if (response != 0) {
             errno=response;
             return -1;
@@ -621,6 +601,15 @@ int openFile(char *pathname, int flags) {
             sendInteger(sd, fsize);
 
             response = (int)receiveInteger(sd);
+
+            if(response == S_STORAGE_FULL){
+              while ((int) receiveInteger(sd)!=EOS_F){
+                char* s = receiveStr(sd);
+                pwarn("WARNING: Il file %s è stato espulso\n"
+                      "Aumentare la capacità del Server per poter memorizzare più file!\n\n", (strrchr(s,'/')+1));
+                free(s);
+              }
+            }
 
             if (response != S_SUCCESS) {
               free(cmd);
@@ -707,9 +696,9 @@ int writeFile(const char *pathname, const char *dirname) {
         return -1;
     }
 
-
-    free(request);
-    free(client_pid);
+    //free(pathname);
+    //free(request);
+    //free(client_pid);
 
     int status = (int)receiveInteger(sd);
 
@@ -747,7 +736,7 @@ int writeFile(const char *pathname, const char *dirname) {
               perr("Impossibile creare un nuovo file, libera spazio!\n");
           } else {
               fwrite(buff, sizeof(char), n, file);
-              if(print_all) psucc("Download completed\n\n");
+              psucc("Download completato!\n\n");
               fclose(file);
           }
           free(buff);

@@ -11,30 +11,30 @@ void pcolor(enum Color c, char* s, ...){
     va_start(argp, s);
     char* p;
     switch (c) {
-        case RED:
-            p = str_concat(RD,s);
-            break;
-        case GREEN:
-            p = str_concat(GRN,s);
-            break;
-        case YELLOW:
-            p = str_concat(YEL,s);
-            break;
-        case BLUE:
-            p = str_concat(BLU,s);
-            break;
-        case MAGENTA:
-            p = str_concat(MAG,s);
-            break;
-        case CYAN:
-            p = str_concat(CYN,s);
-            break;
-        case WHITE:
-            p = str_concat(WHT,s);
-            break;
-        case STANDARD:
-            p = str_concat(RESET,s);
-            break;
+      case RED:
+        p = str_concat(RD,s);
+        break;
+      case GREEN:
+        p = str_concat(GRN,s);
+        break;
+      case YELLOW:
+        p = str_concat(YEL,s);
+        break;
+      case BLUE:
+        p = str_concat(BLU,s);
+        break;
+      case MAGENTA:
+        p = str_concat(MAG,s);
+        break;
+      case CYAN:
+        p = str_concat(CYN,s);
+        break;
+      case WHITE:
+        p = str_concat(WHT,s);
+        break;
+      case STANDARD:
+        p = str_concat(RESET,s);
+        break;
     }
 
     vprintf(p, argp);
