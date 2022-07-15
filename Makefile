@@ -24,6 +24,7 @@ client_lib = 	./lib/src/customsocket.c			\
 							./lib/src/customprint.c				\
 							./lib/src/customstring.c			\
 							./lib/src/customfile.c				\
+							./lib/src/clientapi.c				\
 							./lib/src/customlist.c
 
 

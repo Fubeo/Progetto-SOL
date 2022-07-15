@@ -31,6 +31,6 @@ socket="./tmp/serversock.sk"
 -u${folder1}cani/cani_1.png ,                 \
 -u${folder1}cani/cani_2.png ,                 \
 -u${folder1}cani/cani_3.png ,                 \
--u${folder1}cani/cani_400.png ,                 \
+-u${folder1}cani/cani_400.png ,               \
 -u${folder1}molti_file/file_piccolo5.txt ,    \
 -d${download} -R5

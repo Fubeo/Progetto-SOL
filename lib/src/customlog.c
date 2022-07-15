@@ -63,12 +63,15 @@ void log_addline(logfile *lf, char *s){
   pthread_mutex_unlock(lf->log_mtx);
 }
 
-void log_addreadablerequest(logfile *lf, char *request){
-  char *t = str_long_toStr(gettid());
+void log_addreadablerequest(logfile *lf, char *operation, char *cpid, int fd_c){
   char *s = malloc(BUFSIZE*sizeof(char));
-  snprintf(s, BUFSIZE, "Worker %s is managing a %s operation for client with pid %s connected at socket %d", t, operation);
+  snprintf(s, BUFSIZE, "Worker %d is managing a %s operation for client with pid %s connected at socket %d",
+    gettid(),
+    operation,
+    cpid,
+    fd_c
+  );
   log_addline(lf, s);
-  free(t);
   free(s);
 }
 

@@ -16,7 +16,7 @@ logfile* log_init(char *logsdir);
 char *generate_logpath(char *logsdir);
 void log_addline(logfile *lf, char *s);
 void log_addrequest(logfile *lf, char *request);
-void log_addreadablerequest(logfile *lf, char *request)
+void log_addreadablerequest(logfile *lf, char *operation, char *cpid, int fd_c);
 void log_addcloseconnection(logfile *lf, char *cpid);
 void log_addread(logfile *lf, char *cpid, char *pathname, size_t size);
 void log_addwrite(logfile *lf, char *cpid, char *pathname, size_t size);
