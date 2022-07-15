@@ -164,7 +164,7 @@ int main(int argc, char *argv[]) {
       if ((sreturn = select(sortedlist_getMax(fd_list) + 1, &ready_sockets, NULL, NULL, &tv)) < 0) {
           if (errno != EINTR) {
               fprintf(stderr, "Select Error: value < 0\n"
-                              "Error code: %s\n\n", strerror(errno));
+                              "Error code: %s\n", strerror(errno));
           }
           server_running = false;
           break;
@@ -214,7 +214,7 @@ int main(int argc, char *argv[]) {
                 pthread_mutex_unlock(&server_data_mtx);
                 if(config.PRINT_LOG > 0){
                   psucc("A new client connected!\n");
-                  printf("Number of connected clients: %d\n\n", n_clients_connected);
+                  printf("Number of connected clients: %d\n", n_clients_connected);
                 }
                 if(max_n_clients_connected < n_clients_connected) max_n_clients_connected = n_clients_connected;
               }
@@ -270,11 +270,11 @@ void init_server(int argc, char *argv[]) {
           config_path = realpath(cmd, NULL);
           if (config_path == NULL) {
               fprintf(stderr, "Config file not found!\n"
-                              "Default settings will be used\n\n");
+                              "Default settings will be used\n");
           }
       }
   } else if (argc > 2) {
-      pwarn("WARNING: invalid -c arguments\n\n");
+      pwarn("WARNING: invalid -c arguments\n");
   }
   // lettura file config
   settings_load(&config, config_path);
@@ -414,6 +414,8 @@ void *worker_function(){
 void closeConnection(int fd_client, char *cpid) {
     int nfiles = *((int *) hash_getValue(tbl_has_opened, cpid));
 
+    log_addreadablerequest(lf, "closeConnection", cpid, fd_client);
+
     if (nfiles == 0) {
         sendInteger(fd_client, S_SUCCESS);
     } else {
@@ -454,7 +456,7 @@ void *stop_server(void *argv) {
 
     pthread_sigmask(SIG_SETMASK, &set, NULL);
 
-    if(config.PRINT_LOG == 2) psucc("SIGWAIT Thread avviato\n\n");
+    if(config.PRINT_LOG == 2) psucc("SIGWAIT Thread avviato\n");
     if (sigwait(&set, &signal_captured) != 0) {
         soft_close = true;
         return NULL;
@@ -489,6 +491,8 @@ void createFile(int fd_client, char *request) {
   char *filepath = split[0];
   char *cpid = split[1];
   assert(!str_is_empty(filepath) && filepath != NULL);
+
+  log_addreadablerequest(lf, "create", cpid, fd_client);
 
   if (hash_containsKey(tbl_file_path, filepath)) {
     pwarn("Client %d tried to create file %s, that already exists on the server\n", fd_client, (strrchr(filepath,'/')+1));
@@ -533,6 +537,8 @@ void openFile(int fd_client, char *request) {
   char *filepath = array[0];  // path del file inviato dal Client
   char *cpid = array[1];      // pid del client
 
+  log_addreadablerequest(lf, "open", cpid, fd_client);
+
   if (!hash_containsKey(tbl_file_path, filepath)) { // Controllo se il file non è presente nello storage
     if(config.PRINT_LOG == 2)
       pwarn("Client %s tried to open a non-existent file\n", cpid);
@@ -572,6 +578,7 @@ void openO_LOCK(int fd_client, char *request){
 
   if (hash_containsKey(tbl_file_path, filepath)) { // Se il file è presente nello storage
     sendInteger(fd_client, SFILE_ALREADY_EXIST);
+    log_addreadablerequest(lf, "openlock", cpid, fd_client);
 
     file_s *f = hash_getValue(tbl_file_path, filepath);
     if (file_is_opened_by(f, cpid)) { // controllo se il file è già stato aperto dal Client
@@ -631,13 +638,14 @@ void openO_LOCK(int fd_client, char *request){
 
   } else {                                        // Se, invece, il file non e' presente nel server
     sendInteger(fd_client, SFILE_NOT_FOUND);
+    log_addreadablerequest(lf, "createlocked", cpid, fd_client);
     int response = receiveInteger(fd_client);
     if(response == SFILE_NOT_FOUND){
         if (config.PRINT_LOG == 2){
             pwarn("Client %s tried to create a file that does not exist\n", cpid);
         }
         if (config.PRINT_LOG == 1){
-            perr("Request denied\n\n");
+            perr("Request denied\n");
         }
         log_adderror(lf, cpid, "Client tried to create a file that does not exist");
         str_clearArray(&array, n);
@@ -763,10 +771,10 @@ void closeFile(int fd_client, char *request) {
     int n = str_split(&array, request, ":");
     assert(n == 2);
 
-
     char *filepath = array[0];
     char *cpid = array[1];
 
+    log_addreadablerequest(lf, "close", cpid, fd_client);
 
     if (!hash_containsKey(tbl_file_path, filepath)) {
       if(config.PRINT_LOG == 2)
@@ -830,7 +838,7 @@ void closeFile(int fd_client, char *request) {
     log_addclose(lf, cpid, filepath);
 
     if(config.PRINT_LOG > 0)
-      psucc("File %s closed by client %s\n\n", (strrchr(filepath,'/')+1), cpid);
+      psucc("File %s closed by client %s\n", (strrchr(filepath,'/')+1), cpid);
 
     str_clearArray(&array, n);
 }
@@ -844,6 +852,9 @@ void writeFile(int fd_client, char *request, file_s *f) {
 
   char option = (split[2])[0];
   assert(option == 'y' || option == 'n');
+
+  log_addreadablerequest(lf, "write", cpid, fd_client);
+
   size_t fsize;
 
   void *fcontent = NULL;
@@ -950,6 +961,8 @@ void readFile(int fd_client, char *request) {
   char *filepath = array[0];
   char *cpid = array[1];
 
+  log_addreadablerequest(lf, "read", cpid, fd_client);
+
   //controllo che il file sia stato creato
   if (!hash_containsKey(tbl_file_path, filepath)) {
       if(config.PRINT_LOG == 2)
@@ -1023,6 +1036,8 @@ void readNFiles(int fd_client, char *request) {
   char *nf = array[0];
   char *cpid = array[1];
 
+  log_addreadablerequest(lf, "readn", cpid, fd_client);
+
   if (hash_isEmpty(tbl_file_path)) {
       if(config.PRINT_LOG == 2)
           pwarn("Client %s requested a readn, but storage is empty\n", cpid);
@@ -1095,6 +1110,9 @@ void appendFile(int fd_client, char *request) {
 
     assert(option == 'y' || option == 'n');
 
+
+    log_addreadablerequest(lf, "append", cpid, fd_client);
+
     void *fcontent;
     size_t fsize;
     receivefile(fd_client, &fcontent, &fsize);
@@ -1102,7 +1120,7 @@ void appendFile(int fd_client, char *request) {
 
     if (!hash_containsKey(tbl_file_path, filepath)) {
         if (config.PRINT_LOG == 2)
-            pwarn("Client %s tried to append data to a non-existent file\n\n", cpid);
+            pwarn("Client %s tried to append data to a non-existent file\n", cpid);
         if(config.PRINT_LOG == 1)
             perr("Request denied\n");
 
@@ -1130,7 +1148,7 @@ void appendFile(int fd_client, char *request) {
 
     if (!file_is_opened_by(f, cpid)) {
         if (config.PRINT_LOG == 2)
-            pwarn("Client %s tried to append a non-opened file\n\n", cpid);
+            pwarn("Client %s tried to append a non-opened file\n", cpid);
         if(config.PRINT_LOG == 1)
             perr("Request denied\n");
         sendInteger(fd_client, SFILE_NOT_OPENED);
@@ -1234,6 +1252,8 @@ void lockFile(int fd_client, char *request){
   char *cpid = malloc(strlen(array[1])*sizeof(char)+1);
   strcpy(cpid, array[1]);      // pid del client
 
+  log_addreadablerequest(lf, "lock", cpid, fd_client);
+
   if (!hash_containsKey(tbl_file_path, filepath)) { // Se il file non e' presente nello storage
     if (config.PRINT_LOG == 2) {
       pwarn("Client %s tried to lock a file that does not exist\n", cpid);
@@ -1317,6 +1337,8 @@ void unlockFile(int fd_client, char *request){
   int n = str_split(&array, request, ":");
   char *filepath = array[0];
   char *cpid = array[1];
+
+  log_addreadablerequest(lf, "unlock", cpid, fd_client);
 
   //controllo che il file sia stato creato
   if (!hash_containsKey(tbl_file_path, filepath)) {
@@ -1593,6 +1615,12 @@ void clear_openedFiles(char *key, void *value, bool *exit, void *cpid) {
       }
 
       client_closes_file(&f, (char *) cpid);
+
+      if(config.PRINT_LOG > 0){
+        psucc("File ");
+        pcolor(STANDARD, "%s", (strrchr(f->path,'/')+1));
+        psucc(" (automatically) closed by client %s\n", cpid);
+      }
 
       if(f->locked_by != NULL && strcmp(f->locked_by, cpid) == 0){
         free(f->locked_by);

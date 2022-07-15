@@ -57,9 +57,9 @@ test1: clean server client
 		@killall -TERM -w memcheck-amd64-
 		@printf "\ntest1 terminated\n"
 
-testlock: clean server client clean
+test2: clean server client
 		clear
-		valgrind $(VALGRIND_FLAGS) $(SERVER_OUT) -c./config/testlock.ini &
-		sh scripts/testlock.sh
+		valgrind $(VALGRIND_FLAGS) $(SERVER_OUT) -c./config/test2.ini &
+		sh scripts/test2.sh
 		@killall -TERM -w memcheck-amd64-
-		@printf "\ntestlock terminated\n"
+		@printf "\ntest2 terminated\n"

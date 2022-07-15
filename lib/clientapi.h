@@ -9,7 +9,10 @@ int openConnection(const char *sockname, int msec, const struct timespec abstime
 int closeConnection(const char *sockname);
 void exit_function();
 
+// -o
 int openFile(char *pathname, int flags);
+
+// -C
 int closeFile(const char *pathname);
 
 // -w e -W

@@ -36,8 +36,6 @@ static struct timespec timespec_new() {
 extern char *optarg;
 
 
-extern char *sockfilename;
-
 // Settings
 bool print_all = false;           // -p
 int sleep_between_requests = 0;   // -t
@@ -46,14 +44,15 @@ char *download_folder = NULL;     //-d
 char *backup_folder = NULL;       //-D
 
 
-void check_options(int argc, char *argv[]);
+char *check_options(int argc, char *argv[]);
 void execute_options(int argc, char *argv[]);
 void print_commands();
 
 int main(int argc, char *argv[]){
   int errcode;
 
-  check_options(argc, argv);
+  char * sockfilename = check_options(argc, argv);
+  if(sockfilename == NULL) return -1;
 
   execute_options(argc, argv);
 
@@ -83,11 +82,11 @@ void print_commands() {
     printf("\n");
 }
 
-void check_options(int argc, char *argv[]){
+char *check_options(int argc, char *argv[]){
   bool found_rename = false;
   bool found_rR = false;
   bool found_wW = false;
-  // char *sockfilename = NULL;
+  char *sockfilename = NULL;
 
   for (int i = 1; i < argc; i++) {
     if (str_starts_with(argv[i], "-f")) {
@@ -119,7 +118,7 @@ void check_options(int argc, char *argv[]){
   if (!found_rename) {
       perr( "Opzione Socket -f[sockfilename] non specificata\n");
       perr( "Inserire il Server a cui connettersi\n");
-      return;
+      return NULL;
   }
 
   if(!found_rR && download_folder != NULL)
@@ -127,11 +126,13 @@ void check_options(int argc, char *argv[]){
 
   if(!found_wW && backup_folder != NULL)
       perr("Option -D must be used with -w o -W");
+
+  return sockfilename;
 }
 
 void execute_options(int argc, char *argv[]){
   int opt, errcode;
-  while ((opt = getopt(argc, argv, ":h:W:w:R::r:c:l:u:a:o:")) != -1) {
+  while ((opt = getopt(argc, argv, ":h:W:w:R::r:c:l:u:a:o:C:")) != -1) {
 
     switch (opt) {
       case 'h': {
@@ -143,7 +144,8 @@ void execute_options(int argc, char *argv[]){
         char **files = NULL;
         int n = str_split(&files, optarg, ",");
         for (int i = 0; i < n; i++) {
-          files[i] = realpath(files[i], NULL);if(errno == ENOENT){
+          files[i] = realpath(files[i], NULL);
+          if(errno == ENOENT){
             perr( "UnlockFile: file %s does not exist\n", files[i]);
           } else {
             send_file_to_server(backup_folder, files[i]);
@@ -346,6 +348,21 @@ void execute_options(int argc, char *argv[]){
           }
         }
         str_clearArray(&files, n);
+        break;
+      }
+
+      case 'C': {
+        char **files = NULL;
+        int n = str_split(&files, optarg, ",");
+        for (int i = 0; i < n; i++) {
+          files[i] = realpath(files[i], NULL);
+          if(errno == ENOENT){
+            perr( "UnlockFile: file %s does not exist\n", files[i]);
+          } else {
+            closeFile(files[i]);
+            usleep(sleep_between_requests * 1000);
+          }
+        }
         break;
       }
 

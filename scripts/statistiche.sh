@@ -46,8 +46,8 @@ echo -e "\n\n${COLOR_BOLD_CYAN}=== WRITE STATS =================================
 
 n_write=$(grep " written " -c $LOG_FILE)
 tot_written_bytes=$(grep " written " $LOG_FILE | grep -Eo "\[[0-9]*\]" | grep -Eo "[0-9]*" | { sum=0; while read num; do ((sum+=num)); done; echo $sum; } )
-n_appends=$(grep " appended " -c $LOG_FILE)
-tot_appended_bytes=$(grep " appended " $LOG_FILE | grep -Eo "\[[0-9]*\]" | grep -Eo "[0-9]*" | { sum=0; while read num; do ((sum+=num)); done; echo $sum; } )
+n_appends=$(grep " appended to " -c $LOG_FILE)
+tot_appended_bytes=$(grep " appended to " $LOG_FILE | grep -Eo "\[[0-9]*\]" | grep -Eo "[0-9]*" | { sum=0; while read num; do ((sum+=num)); done; echo $sum; } )
 
 echo -e  "${COLOR_BLUE}Number of successful write operations:${COLOR_STANDARD} ${n_write}"
 if [ ${n_write} -gt 0 ]; then

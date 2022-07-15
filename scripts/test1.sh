@@ -1,4 +1,4 @@
-sleep 3
+sleep 5
 realpath=$(realpath ./)
 folder1="${realpath}/test/folder1/"
 folder2="${realpath}/test/folder2/"
@@ -13,7 +13,8 @@ socket="./tmp/serversock.sk"
 -a${folder2}5.txt,${folder2}1.txt ,      \
 -a${folder2}5.txt,${folder2}2.txt ,      \
 -a${folder2}5.txt,${folder2}3.txt ,      \
--a${folder2}5.txt,${folder2}4.txt
+-a${folder2}5.txt,${folder2}4.txt        \
+-C${folder2}5.txt
 
 ./out/client -t200 -f${socket}  -D${backup}    \
 -w${folder1} ,                                 \
