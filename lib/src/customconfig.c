@@ -60,7 +60,6 @@ void setConfigfor(settings *s, char *key, char *value) {
         s->N_WORKERS = converted_v;
     } else if (str_equals(key, "MAX_STORAGE")) {
         errno = 0;
-        fprintf(stdout, "MAX STORAGE: %s\n", value);
         sp = convert_str(value);
         if (errno == ERROR_CONV) {
             fprintf(stderr, "Error on parsing [%s]: default value set\n", key);

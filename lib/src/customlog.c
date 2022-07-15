@@ -12,6 +12,8 @@
 #include "../customlog.h"
 #include "../customstring.h"
 
+#define BUFSIZE 300
+
 logfile* log_init(char *logsdir){
   char *path = generate_logpath(logsdir);
   logfile *lf = malloc(sizeof(logfile));
@@ -61,9 +63,19 @@ void log_addline(logfile *lf, char *s){
   pthread_mutex_unlock(lf->log_mtx);
 }
 
+void log_addreadablerequest(logfile *lf, char *request){
+  char *t = str_long_toStr(gettid());
+  char *s = malloc(BUFSIZE*sizeof(char));
+  snprintf(s, BUFSIZE, "Worker %s is managing a %s operation for client with pid %s connected at socket %d", t, operation);
+  log_addline(lf, s);
+  free(t);
+  free(s);
+}
+
 void log_addrequest(logfile *lf, char *request){
   char *t = str_long_toStr(gettid());
-  char *s = str_concatn("Worker ", t, ": Received a new request -> ", request, NULL);
+  char *s = malloc(BUFSIZE*sizeof(char));
+  snprintf(s, BUFSIZE, "Worker %s received a new request: %s", t, request);
   log_addline(lf, s);
   free(t);
   free(s);
@@ -77,29 +89,29 @@ void log_addcloseconnection(logfile *lf, char *cpid){
 
 void log_addread(logfile *lf, char *cpid, char *pathname, size_t size){
   char *t = str_long_toStr(gettid());
-  char *s = malloc(100*sizeof(char));
-  snprintf(s, 100, "Worker %s: Client %s has read file %s of size [%ld]", t, cpid, pathname, size);
+  char *s = malloc(BUFSIZE*sizeof(char));
+  snprintf(s, BUFSIZE, "Worker %s: Client %s has read file %s of size [%ld]", t, cpid, pathname, size);
   log_addline(lf, s);
-  free(s);
   free(t);
+  free(s);
 }
 
 void log_addwrite(logfile *lf, char *cpid, char *pathname, size_t size){
   char *t = str_long_toStr(gettid());
-  char *s = malloc(100*sizeof(char));
-  snprintf(s, 100, "Worker %s: Client %s has written file %s of size [%ld]", t, cpid, pathname, size);
+  char *s = malloc(BUFSIZE*sizeof(char));
+  snprintf(s, BUFSIZE, "Worker %s: Client %s has written file %s of size [%ld]", t, cpid, pathname, size);
   log_addline(lf, s);
-  free(s);
   free(t);
+  free(s);
 }
 
 void log_addappend(logfile *lf, char *cpid, char *pathname, size_t size){
   char *t = str_long_toStr(gettid());
-  char *s = malloc(100*sizeof(char));
-  snprintf(s, 100, "Worker %s: Client %s has appended to file %s a file of size [%ld]", t, cpid, pathname, size);
+  char *s = malloc(BUFSIZE*sizeof(char));
+  snprintf(s, BUFSIZE, "Worker %s: Client %s has appended to file %s a file of size [%ld]", t, cpid, pathname, size);
   log_addline(lf, s);
-  free(s);
   free(t);
+  free(s);
 }
 
 void log_addcreate(logfile *lf, char *cpid, char *pathname){
@@ -136,22 +148,20 @@ void log_addopenlock(logfile *lf, char *cpid, char *pathname){
 
 void log_addeject(logfile *lf, char *cpid, char *pathname, size_t size){
   char *t = str_long_toStr(gettid());
-  char *sz = str_long_toStr(size);
-  char *s = str_concatn("Worker ", t, ": Client ", cpid, " ejected file ", pathname, " of size [", sz, "]", NULL);
+  char *s = malloc(BUFSIZE*sizeof(char));
+  snprintf(s, BUFSIZE, "Worker %s: Client %s ejected file %s of size [%ld]", t, cpid, pathname, size);
   log_addline(lf, s);
-  free(sz);
   free(t);
   free(s);
 }
 
 void log_addremove(logfile *lf, char *cpid, char *pathname, size_t size){
   char *t = str_long_toStr(gettid());
-  char *sz = str_long_toStr(size);
-  char *s = str_concatn("Worker ", t, ": Client ", cpid, " removed file ", pathname, " of size [", sz, "]", NULL);
+  char *s = malloc(BUFSIZE*sizeof(char));
+  snprintf(s, BUFSIZE, "Worker %s: Client %s removed file %s of size [%ld]", t, cpid, pathname, size);
   log_addline(lf, s);
-  free(sz);
-  free(t);
   free(s);
+  free(t);
 }
 
 void log_addclose(logfile *lf, char *cpid, char *pathname){

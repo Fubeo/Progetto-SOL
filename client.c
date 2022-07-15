@@ -226,7 +226,7 @@ void execute_options(int argc, char *argv[], int sd){
             pcode(errcode, files[i]);
             perr( "OpenFile: error occurred on file %s\n", files[i]);
           } else if(print_all){
-            psucc("File %s successfully opened\n\n", files[i]);
+            if(print_all) psucc("File %s successfully opened\n", files[i]);
           }
           usleep(sleep_between_requests * 1000);
         }
@@ -247,7 +247,7 @@ void execute_options(int argc, char *argv[], int sd){
               pcode(errcode, NULL);
           } else if(print_all){
               if(n == 0)
-              psucc("%d files received\n\n", n);
+              psucc("Files successfully read\n");
           }
           break;
       }
@@ -313,7 +313,7 @@ void execute_options(int argc, char *argv[], int sd){
             pcode(errcode, files[i]);
             perr( "RemoveFile: error occurred on file %s\n", files[i]);
           } else if(print_all){
-            psucc("File %s successfully removed\n\n", files[i]);
+            psucc("File %s successfully removed\n", files[i]);
           }
           usleep(sleep_between_requests * 1000);
         }
@@ -344,7 +344,7 @@ void execute_options(int argc, char *argv[], int sd){
           pcode(errcode, optarg);
           perr( "AppendFile: error occurred on file %s\n", optarg);
         } else if(print_all){
-          psucc("File %s successfully appended\n\n", optarg);
+          psucc("File %s successfully appended\n", optarg);
         }
         free(file_content);
         str_clearArray(&files, n);
@@ -368,8 +368,12 @@ void execute_options(int argc, char *argv[], int sd){
         int n = str_split(&files, optarg, ",");
         for (int i = 0; i < n; i++) {
           files[i] = realpath(files[i], NULL);
-          unlockFile(files[i]);
-          usleep(sleep_between_requests * 1000);
+          if(errno == ENOENT){
+            perr( "UnlockFile: file %s does not exist\n", optarg);
+          } else {
+            unlockFile(files[i]);
+            usleep(sleep_between_requests * 1000);
+          }
         }
         str_clearArray(&files, n);
         break;
@@ -475,7 +479,7 @@ int closeConnection(const char *sockname) {
 
     if(status != S_SUCCESS){
       if(status == SFILES_FOUND_ON_EXIT){
-        if(print_all) pcolor(CYAN, "Server is closing files of client %d\n", gettid());
+        if(print_all) pcolor(CYAN, "Server is closing files still opened\n");
       }
     }
 
@@ -494,7 +498,7 @@ int closeConnection(const char *sockname) {
 void send_file_to_server(const char *backup_folder, char *file) {
     int errcode;
     char *f = malloc(strlen(file)*sizeof(char));
-    if(print_all) printf("Sending %s\n", file);
+    if(print_all) pcolor(CYAN, "Sending file %s%s\n", "\x1B[0m", file);
     int o;
     if(requested_o_lock) o = O_LOCK;
     else o = O_CREATE;
@@ -511,7 +515,7 @@ void send_file_to_server(const char *backup_folder, char *file) {
         errcode = errno;
         pcode(errcode, f);
     } else if(print_all){
-        psucc("File \"%s\" successfully sent\n\n", strrchr(file, '/') + 1);
+        psucc("File \"%s\" successfully sent\n", strrchr(file, '/') + 1);
     }
     free(f);
 }
@@ -568,7 +572,7 @@ int openFile(char *pathname, int flags) {
           if(response == S_STORAGE_FULL){
             while ((int) receiveInteger(sd)!=EOS_F){
               char* s = receiveStr(sd);
-              pwarn("WARNING: file %s has been removed\n"
+              if(print_all) pwarn("WARNING: file %s has been removed\n"
                     "Increase storage space to store more files!\n\n", (strrchr(s,'/')+1));
               free(s);
             }
@@ -576,7 +580,7 @@ int openFile(char *pathname, int flags) {
 
           if(response == SFILE_ALREADY_EXIST){
             errno = SFILE_ALREADY_EXIST;
-            pwarn("WARNING: file %s is already stored on the server!\n\n");
+            if(print_all) pwarn("WARNING: file %s is already stored on the server!\n\n");
             return -1;
           }
 
@@ -971,13 +975,13 @@ int lockFile(const char*pathname){
 
     if(response == SFILE_NOT_FOUND){
       errno = SFILE_NOT_FOUND;
-      pwarn("WARNING: file %s does not exist on the server!\n\n", pathname);
+      if(print_all) pwarn("WARNING: file %s does not exist on the server!\n\n", pathname);
       return -1;
     }
 
     if(response == SFILE_WAS_REMOVED){
       errno = SFILE_WAS_REMOVED;
-      pwarn("WARNING: file %s has been removed before server could access to it!\n\n", pathname);
+      if(print_all) pwarn("WARNING: file %s has been removed before server could access to it!\n\n", pathname);
       return -1;
     }
 
@@ -1000,19 +1004,19 @@ int unlockFile(const char*pathname){
 
   if(response == SFILE_NOT_FOUND){
     errno = SFILE_NOT_FOUND;
-    pwarn("WARNING: file %s does not exist on the server!\n\n", pathname);
+    if(print_all) pwarn("WARNING: file %s does not exist on the server!\n\n", pathname);
     return -1;
   }
 
   if(response == SFILE_NOT_LOCKED){
     errno = SFILE_NOT_LOCKED;
-    pwarn("WARNING: file %s is not locked!\n\n", pathname);
+    if(print_all) pwarn("WARNING: file %s is not locked!\n\n", pathname);
     return -1;
   }
 
   if(response == CLIENT_NOT_ALLOWED){
     errno = CLIENT_NOT_ALLOWED;
-    pwarn("WARNING: file %s is locked by another client!\n\n", pathname);
+    if(print_all) pwarn("WARNING: file %s is locked by another client!\n\n", pathname);
     return -1;
   }
 
