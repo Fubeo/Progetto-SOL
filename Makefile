@@ -5,7 +5,7 @@ LIBS       				= -lpthread
 SERVER_OUT 				= ./out/server
 CLIENT_OUT 				= ./out/client
 FLAGS							= -std=c99 -Wall
-VALGRIND_FLAGS 		= --leak-check=full --show-leak-kinds=all -s
+VALGRIND_FLAGS 		= --leak-check=full #--show-leak-kinds=all -s
 
 .DEFAULT_GOAL := all
 
@@ -53,13 +53,18 @@ all: server client
 test1: clean server client
 		clear
 		valgrind $(VALGRIND_FLAGS) $(SERVER_OUT) -c./config/test1.ini &
-		sh scripts/test1.sh
+		./scripts/test1.sh
 		@killall -TERM -w memcheck-amd64-
 		@printf "\ntest1 terminated\n"
 
 test2: clean server client
 		clear
-		valgrind $(VALGRIND_FLAGS) $(SERVER_OUT) -c./config/test2.ini &
-		sh scripts/test2.sh
-		@killall -TERM -w memcheck-amd64-
+		$(SERVER_OUT) -c./config/test2.ini &
+		./scripts/test2.sh
+		@killall -HUP -w server
 		@printf "\ntest2 terminated\n"
+
+test3: clean server client
+		clear
+		./scripts/test3.sh
+		@printf "\ntest3 terminated\n"

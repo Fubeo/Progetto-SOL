@@ -65,7 +65,7 @@ void log_addline(logfile *lf, char *s){
 
 void log_addreadablerequest(logfile *lf, char *operation, char *cpid, int fd_c){
   char *s = malloc(BUFSIZE*sizeof(char));
-  snprintf(s, BUFSIZE, "Worker %d: Managing a %s operation for client with pid %s connected at socket %d",
+  snprintf(s, BUFSIZE, "Worker %d: Managing a %s operation for client with pid %s connected to socket %d",
     gettid(),
     operation,
     cpid,

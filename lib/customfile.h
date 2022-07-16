@@ -22,5 +22,6 @@ bool is_directory(const char *file);
  *
  * */
 int file_scanAllDir(char*** output, char* init_dir);
-int file_nscanAllDir(char*** output, char* init_dir, int n);
+int file_nscan(char*** output, char* init_dir, int left_to_read);
+int file_nscanAllDir(char*** output, char* init_dir, int *left_to_read, int *array_size, int *current_length);
 #endif

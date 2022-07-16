@@ -10,6 +10,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <time.h>
+#include <assert.h>
 #include "./lib/customsocket.h"
 #include "./lib/customstring.h"
 #include "./lib/customprint.h"
@@ -34,10 +35,9 @@ static struct timespec timespec_new() {
 }
 
 extern char *optarg;
-
+extern bool print_all;
 
 // Settings
-bool print_all = false;           // -p
 int sleep_between_requests = 0;   // -t
 bool requested_o_lock = false;    // -L
 char *download_folder = NULL;     //-d
@@ -133,6 +133,7 @@ char *check_options(int argc, char *argv[]){
 void execute_options(int argc, char *argv[]){
   int opt, errcode;
   while ((opt = getopt(argc, argv, ":h:W:w:R::r:c:l:u:a:o:C:")) != -1) {
+    fprintf(stdout, "%d: NUOVA OPT %c\n", getpid(), opt);
 
     switch (opt) {
       case 'h': {
@@ -144,13 +145,14 @@ void execute_options(int argc, char *argv[]){
         char **files = NULL;
         int n = str_split(&files, optarg, ",");
         for (int i = 0; i < n; i++) {
-          files[i] = realpath(files[i], NULL);
+          char *s = realpath(files[i], NULL);
           if(errno == ENOENT){
-            perr( "UnlockFile: file %s does not exist\n", files[i]);
+            perr( "WriteFile: file %s does not exist\n", files[i]);
           } else {
             send_file_to_server(backup_folder, files[i]);
             usleep(sleep_between_requests * 1000);
           }
+          free(s);
         }
         break;
       }
@@ -160,7 +162,9 @@ void execute_options(int argc, char *argv[]){
         int n_files = -1;
 
         int count;
+
         int n = str_split(&array, optarg, ",");
+
 
         if (n > 2) {
           perr("Troppi argomenti per il comando -w dirname[,n=x]\n");
@@ -174,7 +178,7 @@ void execute_options(int argc, char *argv[]){
 
         // lettura dei path dei files nella directory
         char **files = NULL;
-        count = file_nscanAllDir(&files, array[0], n_files);
+        count = file_nscan(&files, array[0], n_files);
 
         for (int i = 0; i < count; i++) {
           send_file_to_server(backup_folder, files[i]);
@@ -216,6 +220,8 @@ void execute_options(int argc, char *argv[]){
               if(n == 0)
               psucc("Files successfully read\n");
           }
+          fprintf(stdout, "%d: FINITO READN\n", getpid());
+
           break;
       }
 
@@ -308,8 +314,8 @@ void execute_options(int argc, char *argv[]){
 
         if (appendToFile(files[0], file_content, file_size, backup_folder)!= 0) {
           errcode = errno;
-          pcode(errcode, optarg);
-          perr( "AppendFile: error occurred on file %s\n", optarg);
+          pcode(errcode, files[1]);
+          perr( "AppendFile: error occurred while appending %s to %s\n", (strrchr(files[1],'/')+1), (strrchr(files[0],'/')+1));
         } else if(print_all){
           psucc("File %s successfully appended\n", optarg);
         }
@@ -324,7 +330,7 @@ void execute_options(int argc, char *argv[]){
         for (int i = 0; i < n; i++) {
           char* rp = realpath(files[i], NULL);
           if(errno == ENOENT){
-            perr( "UnlockFile: file %s does not exist\n", files[i]);
+            perr( "LockFile: file %s does not exist\n", files[i]);
           } else {
             lockFile(files[i]);
             usleep(sleep_between_requests * 1000);
@@ -357,7 +363,7 @@ void execute_options(int argc, char *argv[]){
         for (int i = 0; i < n; i++) {
           files[i] = realpath(files[i], NULL);
           if(errno == ENOENT){
-            perr( "UnlockFile: file %s does not exist\n", files[i]);
+            perr( "CloseFile: file %s does not exist\n", files[i]);
           } else {
             closeFile(files[i]);
             usleep(sleep_between_requests * 1000);
@@ -372,30 +378,37 @@ void execute_options(int argc, char *argv[]){
       }
     }
   }
+    fprintf(stdout, "%d: FINITO READN\n", getpid());
 
 }
 
 void send_file_to_server(const char *backup_folder, char *file) {
     int errcode;
-    char *f = malloc(strlen(file)*sizeof(char));
-    if(print_all) pcolor(CYAN, "Sending file %s%s\n", "\x1B[0m", file);
-    int o;
-    if(requested_o_lock) o = O_LOCK;
-    else o = O_CREATE;
 
-    if (openFile(file, o) != 0) {
+    char *f = malloc(strlen(file)*sizeof(char)+1);
+    strcpy(f, file);
+
+    int o = ((requested_o_lock) ? O_LOCK : O_CREATE);
+
+    extern bool o_lock_exists;
+    if (openFile(f, o) != 0) {
+        if(o == O_LOCK)
+          if(!o_lock_exists) fprintf(stderr, "OpenLock: error creating file %s\n", file);
+          else fprintf(stderr, "OpenLock: error opening file %s\n", file);
+        else fprintf(stderr, "CreateFile: error creating file %s\n", file);
         errcode = errno;
-        pcode(errcode, f);
+        pcode(errcode, file);
         free(f);
         return;
     }
-
-    if (writeFile(file, backup_folder) != 0) {
-        fprintf(stderr, "Writefile: error sending file %s\n", file);
-        errcode = errno;
-        pcode(errcode, f);
-    } else if(print_all){
-        psucc("File \"%s\" successfully sent\n", strrchr(file, '/') + 1);
+    if((o == O_LOCK && !o_lock_exists) || o == O_CREATE){
+      if (writeFile(f, backup_folder) != 0) {
+          if(print_all) pcolor(CYAN, "Sending file %s%s\n", "\x1B[0m", file);
+          fprintf(stderr, "Writefile: error sending file %s\n", file);
+          errcode = errno;
+          pcode(errcode, f);
+      } else if(print_all){
+          psucc("File \"%s\" successfully sent\n", strrchr(file, '/') + 1);
+      }
     }
-    free(f);
 }

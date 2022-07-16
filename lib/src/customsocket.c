@@ -149,7 +149,7 @@ int sendInteger(int fd_sk, size_t n) {
 size_t receiveInteger(int fd_sk) {
     size_t n=0;
     if(readn(fd_sk, &n, sizeof(unsigned long)) == -1){
-        fprintf(stderr, "An error occurred while reading msg lenght\n");
+        fprintf(stderr, "An error occurred while reading msg lenght %d\n", gettid());
         return errno;
     }
 
@@ -195,7 +195,7 @@ int sendfile(int fd_sk, const char* pathname){
         fprintf(stderr, "An error occurred on sending file\n");
         exit(errno);
     }
-    
+
     fclose(file);
     free(file_content);
 

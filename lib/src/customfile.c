@@ -4,10 +4,10 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <dirent.h>
+#include <errno.h>
 #include <assert.h>
 #include "../customstring.h"
 #include "../customfile.h"
-#include "../customconfig.h"
 
 char* file_readline(FILE* file, char **buffer, int len){
   char* ret = fgets(*buffer, len, file);
@@ -48,57 +48,60 @@ bool is_directory(const char *file)
 }
 
 int file_scanAllDir(char*** output, char* init_dir){
-    return file_nscanAllDir(output,init_dir,-1);
+    return file_nscan(output,init_dir,-1);
 }
 
-int file_nscanAllDir(char*** output, char* init_dir, int n)
-{
-    static int max=2;
-    static int current_length=0;
-    static int count=0;
-    count=n;
-    DIR *current_dir = opendir(init_dir);
+int file_nscan(char*** output, char* init_dir, int left_to_read){
+  *output = calloc(2, sizeof(char*));
+  int array_size = 2;
+  int current_length=0;
+  return file_nscanAllDir(output, init_dir, &left_to_read, &array_size, &current_length);
+}
 
-    if (current_dir == NULL || count==0)
-    {
-        return current_length;
+int file_nscanAllDir(char*** output, char* init_dir, int *left_to_read, int *array_size, int *current_length){
+
+  DIR *current_dir = opendir(init_dir);
+
+  if (current_dir == NULL || *left_to_read==0)
+  {
+      return *current_length;
+  }
+
+  struct dirent *file;
+
+  while ((file = readdir(current_dir)) != NULL) {
+    if(*left_to_read == 0)
+        break;
+
+    if(*current_length==*array_size){
+        *array_size *= 2;
+        *output = realloc(*output, (*array_size) * sizeof(char*));
     }
+    char *file_name = file->d_name;
 
-    if(*output==NULL){
-        *output = calloc(max, sizeof(char*));
-    }
+    if (strcmp(".", file_name) != 0 && strcmp("..", file_name) != 0 && file_name[0] != '.') {
 
-    struct dirent *file;
+      if(str_ends_with(init_dir, "/")) file_name = str_concatn(init_dir, file_name, NULL);
+      else file_name = str_concatn(init_dir,"/",file_name,NULL);
 
-    while ((file = readdir(current_dir)) != NULL)
-    {
-        if(count==0)
-            break;
+      char* filepath = realpath(file_name,NULL);
+      if(errno == ENOENT) {
+        printf("File %s not found\n", file_name);
+      } else {
+        assert(filepath != NULL);
 
-        if(current_length==max){
-            max*=2;
-            *output = realloc(*output, max * sizeof(char*));
+        if(!is_directory(filepath)) {
+          (*output)[*current_length] = filepath;
+          (*current_length)++;
+          (*left_to_read)--;
+          free(file_name);
+        } else {
+          file_nscanAllDir(output, filepath, left_to_read, array_size, current_length);
         }
-        char *file_name = file->d_name;
-
-        if (strcmp(".", file_name) != 0 && strcmp("..", file_name) != 0 && file_name[0] != '.')
-        {
-            file_name= str_concatn(init_dir,"/",file_name,NULL);
-            char* filepath = realpath(file_name,NULL);
-            assert(filepath != NULL);
-
-            if(!is_directory(filepath)) {
-                (*output)[current_length] = filepath;
-                free(file_name);
-                current_length++;
-                count--;
-            } else
-            {
-                current_length=file_nscanAllDir(output, filepath, count);
-            }
-        }
+      }
     }
+  }
 
-    closedir(current_dir);
-    return current_length;
+  closedir(current_dir);
+  return *current_length;
 }

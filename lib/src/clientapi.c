@@ -20,9 +20,12 @@
 int sd = -1;
 
 char *sockfilename = NULL;        // -f
+bool print_all = false;           // -p
 
 bool running = true;
 bool connected = false;
+
+bool o_lock_exists;
 
 static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
@@ -67,6 +70,11 @@ int openConnection(const char *sockname, int msec, const struct timespec abstime
         free(mypid);
         return 0;
     }
+    //per rimuovere i warnings
+    pwarn("");
+    pcode(0, NULL);
+    psucc("");
+    pcolor(STANDARD, "");
 
     pthread_t tid;
     pthread_create(&tid, NULL, &thread_function, (void *) &abstime);
@@ -118,7 +126,7 @@ int closeConnection(const char *sockname) {
 
     if(status != S_SUCCESS){
       if(status == SFILES_FOUND_ON_EXIT){
-        pcolor(CYAN, "Server is closing files still opened\n");
+        if(print_all) pcolor(CYAN, "Server is closing files still opened\n");
       }
     }
 
@@ -200,7 +208,6 @@ int openFile(char *pathname, int flags) {
 
           if (response != S_SUCCESS) {
             free(cmd);
-            free(pathname);
             free(client_pid);
             errno = response;
 
@@ -218,12 +225,16 @@ int openFile(char *pathname, int flags) {
 
           response = (int)receiveInteger(sd);
           if(response == SFILE_ALREADY_EXIST){    // Apri il file in modalita' locked
+            o_lock_exists = true;
             response = (int)receiveInteger(sd);
-            if(response == S_SUCCESS){
+            if(response != S_SUCCESS){
               errno=response;
               return -1;
             }
+            free(cmd);
+            break;
           } else if(response == SFILE_NOT_FOUND){ // Crea il file in modalita' locked
+            o_lock_exists = false;
 
             if(pathname == NULL){
               errno = FILE_NOT_FOUND;
@@ -242,7 +253,6 @@ int openFile(char *pathname, int flags) {
 
             if (response != S_SUCCESS) {
               free(cmd);
-              free(pathname);
               free(client_pid);
               errno = response;
               return -1;
@@ -349,13 +359,13 @@ int writeFile(const char *pathname, const char *dirname) {
             dir = str_create(dirname);
         }
 
-        pwarn("CAPACITY MISS: Receiving ejected data...\n\n");
+        if(print_all)pwarn("CAPACITY MISS: Receiving ejected data...\n\n");
         while(((int)receiveInteger(sd))!=EOS_F){
           char* filepath=receiveStr(sd);
 
           char* filename=strrchr(filepath,'/')+1;
           char *path = str_concat(dir, filename);
-          pwarn("Writing file \"%s\" into folder \"%s\"...\n", filename, dir);
+          if(print_all)pwarn("Writing file %s into folder %s...\n", filename, dir);
 
           void* buff;
           size_t n;
@@ -365,7 +375,7 @@ int writeFile(const char *pathname, const char *dirname) {
               perr("Unable to create a new file, not enough storage\n");
           } else {
               fwrite(buff, sizeof(char), n, file);
-              psucc("Download completed\n\n");
+              if(print_all) psucc("Download completed\n\n");
               fclose(file);
           }
           free(buff);
@@ -561,7 +571,7 @@ int appendToFile(const char *pathname, void *buf, size_t size, const char *dirna
             free(buff);
             free(path);
             free(filepath);
-            psucc("Download completed!\n\n");
+            if(print_all) psucc("Download completed!\n\n");
         }
 
         free(dir);
@@ -600,7 +610,7 @@ int lockFile(const char*pathname){
     }
 
     if(response == S_SUCCESS) {
-      psucc("File %s successfully locked\n", pathname);
+      if(print_all) psucc("File %s successfully locked\n", pathname);
       return 0;
     }
 
@@ -635,7 +645,7 @@ int unlockFile(const char*pathname){
   }
 
   if(response == S_SUCCESS) {
-    psucc("File %s successfully unlocked\n", pathname);
+    if(print_all) psucc("File %s successfully unlocked\n", pathname);
     return 0;
   }
 
