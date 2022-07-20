@@ -8,12 +8,14 @@ socket="tmp/serversock.sk"
 
 while true
 do
-
-./out/client -ftmp/serversock.sk -d${download} -L \
--W${folder2}A.txt                 \
--W${folder2}2.txt                 \
--W${folder2}3.txt                 \
--a${folder2}A.txt,${folder2}A.txt \
+./out/client -f${socket} -d${download}    \
+-r${folder2}A.txt                         \
+-W${folder2}A.txt                         \
+-o${folder2}A.txt,${folder2}B.txt         \
+-W${folder2}B.txt                         \
+-w${folder1}cibo                          \
+-a${folder2}A.txt,${folder2}A.txt         \
+-a${folder2}B.txt,${folder2}B.txt         \
+-C${folder1}cibo/cibo_1.png               \
 -R
-sleep 0.1
 done

@@ -202,7 +202,7 @@ int openFile(char *pathname, int flags) {
 
           if(response == SFILE_ALREADY_EXIST){
             errno = SFILE_ALREADY_EXIST;
-            pwarn("WARNING: file %s is already stored on the server!\n\n");
+            if(print_all) pwarn("WARNING: file %s is already stored on the server!\n\n");
             return -1;
           }
 
@@ -239,7 +239,7 @@ int openFile(char *pathname, int flags) {
             if(pathname == NULL){
               errno = FILE_NOT_FOUND;
               sendInteger(sd, SFILE_NOT_FOUND);
-              perr("FILE NOT FOUND");
+              if(print_all) perr("FILE NOT FOUND");
               return -1;
             }
             sendInteger(sd, S_SUCCESS);
@@ -266,7 +266,7 @@ int openFile(char *pathname, int flags) {
         }
 
         default: {
-            fprintf(stderr, "flags argument error, use O_CREATE or O_LOCK\n");
+            if(print_all) fprintf(stderr, "flags argument error, use O_CREATE or O_LOCK\n");
             response = -1;
             break;
         }
@@ -331,7 +331,7 @@ int writeFile(const char *pathname, const char *dirname) {
     sendn(sd, request, str_length(request));
 
     if(sendfile(sd, pathname)==-1){
-        perr("Malloc error\n");
+        if(print_all) perr("Malloc error\n");
         return -1;
     }
 
@@ -365,14 +365,14 @@ int writeFile(const char *pathname, const char *dirname) {
 
           char* filename=strrchr(filepath,'/')+1;
           char *path = str_concat(dir, filename);
-          if(print_all)pwarn("Writing file %s into folder %s...\n", filename, dir);
+          if(print_all) pwarn("Writing file %s into folder %s\n", filename, dir);
 
           void* buff;
           size_t n;
           receivefile(sd,&buff,&n);
           FILE* file=fopen(path,"wb");
           if(file==NULL){
-              perr("Unable to create a new file, not enough storage\n");
+              if(print_all) perr("Unable to create a new file, not enough storage\n");
           } else {
               fwrite(buff, sizeof(char), n, file);
               if(print_all) psucc("Download completed\n\n");
@@ -483,13 +483,13 @@ int readFile(const char *pathname, void **buf, size_t *size) {
         free(client_pid);
         return 0;
     }
-    if(response == SFILE_NOT_FOUND) perr("ERROR: Requested file is not stored in the server");
-    if(response == SFILE_NOT_OPENED) perr("ERROR: Requested file is not opened by this client");
-    if(response == SFILE_LOCKED) perr("ERROR: Requested file is currently locked by another client");
+    if(response == SFILE_NOT_FOUND && print_all) perr("ERROR: Requested file is not stored in the server");
+    if(response == SFILE_NOT_OPENED && print_all) perr("ERROR: Requested file is not opened by this client");
+    if(response == SFILE_LOCKED && print_all) perr("ERROR: Requested file is currently locked by another client");
 
     free(client_pid);
     free(request);
-    errno=response;
+    errno = response;
     return -1;
 }
 
@@ -555,7 +555,7 @@ int appendToFile(const char *pathname, void *buf, size_t size, const char *dirna
 
             char* filename=strrchr(filepath,'/')+1;
             char *path = str_concat(dir, filename);
-            pwarn("Scrittura del file \"%s\" nella cartella \"%s\" in corso...\n", filename, dir);
+            if(print_all) pwarn("Scrittura del file \"%s\" nella cartella \"%s\" in corso...\n", filename, dir);
 
             void* buff;
             size_t n;
@@ -571,7 +571,7 @@ int appendToFile(const char *pathname, void *buf, size_t size, const char *dirna
             free(buff);
             free(path);
             free(filepath);
-            if(print_all) psucc("Download completed!\n\n");
+            if(print_all) psucc("Download completed\n\n");
         }
 
         free(dir);

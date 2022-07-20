@@ -1,22 +1,19 @@
-sleep 5
+#!/bin/bash
+
+sleep 3
+
 realpath=$(realpath ./)
 folder1="${realpath}/test/folder1/"
 folder2="${realpath}/test/folder2/"
 backup="${realpath}/tmp/backup/"
 download="${realpath}/tmp/download/"
-socket="./tmp/serversock.sk"
+socket="tmp/serversock.sk"
 
 k=0
 
-./out/client -t200 -f${socket} -L        \
--W${folder2}3.txt                       \
--W${folder2}6.txt                       \
--W${folder2}5.txt                       \
--a${folder2}5.txt,${folder2}1.txt       \
--a${folder2}5.txt,${folder2}2.txt       \
--a${folder2}5.txt,${folder2}3.txt       \
--a${folder2}5.txt,${folder2}4.txt        \
--C${folder2}5.txt
+./out/client -t200 -f${socket}  -D${backup} -L \
+-w${folder2} ,                                 \
+-d${download} -R
 PID[k]=$!
 ((k++))
 
@@ -26,14 +23,18 @@ PID[k]=$!
 PID[k]=$!
 ((k++))
 
-./out/client -t200 -f${socket} -d${download}   \
--o${folder2}5.txt,${folder1}cani/cani_1.png   \
--l${folder2}5.txt,${folder1}cani/cani_1.png   \
--r${folder2}5.txt,${folder1}cani/cani_1.png   \
--c${folder2}5.txt                             \
+./out/client -t200 -f${socket} -d${download}  \
+-o${folder2}5.txt,${folder1}cani/cani_1.png ,  \
+-l${folder2}5.txt,${folder1}cani/cani_1.png ,  \
+-r${folder2}5.txt,${folder1}cani/cani_1.png ,  \
 -u${folder1}cani/cani_1.png
 PID[k]=$!
 ((k++))
+
+./out/client -t200 -f${socket} -p	\
+-o${folder2}5.txt  				\
+-a${folder2}5.txt,${folder2}A.txt            	\
+-c${folder2}5.txt                           	\
 
 ./out/client -t200 -f${socket}               \
 -L -w${folder1}cani                          \

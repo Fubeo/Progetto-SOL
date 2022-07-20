@@ -30,8 +30,12 @@
 #define SFILE_LOCKED 25
 #define SFILE_NOT_LOCKED 26
 #define CLIENT_NOT_ALLOWED 27
-#define LOCK_ERROR 28
-#define SFILE_WAS_REMOVED 29
+#define MTX_LOCK_ERROR 28
+#define MTX_UNLOCK_ERROR 29
+#define COND_SIGNAL_ERROR 30
+#define COND_WAIT_ERROR 31
+#define COND_BROADCAST_ERROR 32
+#define SFILE_WAS_REMOVED 33
 
 #ifndef PROGETTO_CUSTOMERRNO_H
 #define PROGETTO_CUSTOMERRNO_H
@@ -45,102 +49,98 @@ static void pcode(int code, char* file) {
 
     switch (code) {
         case SFILE_ALREADY_EXIST : {
-            perr("ERRORE: Il file %s è già presente sul Server\n"
-                            "Codice: SFILE_ALREADY_EXIST\n\n", file);
+            perr("ERROR: file %s already stored on the server\n"
+                            "Errcode: SFILE_ALREADY_EXIST\n\n", file);
             break;
         }
 
         case SFILE_NOT_FOUND : {
-            perr("ERRORE: Il file %s non è presente sul Server\n"
-                            "Codice: SFILE_NOT_FOUND\n\n", file);
+            perr("ERRORE: file %s not stored on the erver\n"
+                            "Errcode: SFILE_NOT_FOUND\n\n", file);
             break;
         }
 
         case SFILE_ALREADY_OPENED : {
-            printf(YEL "WARNING: Il file %s è già stato aperto\n"
-                   "Codice: SFILE_ALREADY_OPENED\n\n", file);
+            printf(YEL "WARNING: file %s already opened\n"
+                   "Errcode: SFILE_ALREADY_OPENED\n\n", file);
             break;
         }
         case SFILE_NOT_OPENED : {
-            perr("ERRORE: Il file %s non è stato aperto\n"
-                            "Operazioni di scrittura non ammesse su file chiusi\n"
-                            "Codice: SFILE_NOT_OPENED\n\n", file);
+            perr("ERRORE: file %s not opened\n"
+                  "Write not permitted on non-opened files\n"
+                  "Errcode: SFILE_NOT_OPENED\n\n", file);
             break;
         }
 
         case SFILE_NOT_EMPTY : {
-            perr("ERRORE: Operazioni di Write() non consentite su file non vuoti\n"
+            perr("ERRORE: write not permitted on empty files\n"
                             "File: %s\n"
-                            "Codice: SFILE_NOT_EMPTY\n\n", file);
+                            "Errcode: SFILE_NOT_EMPTY\n\n", file);
             break;
         }
 
         case S_STORAGE_EMPTY : {
-            printf(YEL "WARNING: Il Server non contiene file\n"
-                   "Codice: S_STORAGE_EMPTY\n\n");
+            printf(YEL "WARNING: server is empty\n"
+                   "Errcode: S_STORAGE_EMPTY\n\n");
             break;
         }
 
         case SOCKET_ALREADY_CLOSED : {
-            perr("ERRORE: Il socket è già stato chiuso\n"
-                            "Codice: SOCKET_ALREADY_CLOSED\n\n");
+            perr("ERRORE: socket is already closed\n"
+                 "Errcode: SOCKET_ALREADY_CLOSED\n\n");
             break;
         }
 
         case SFILE_TOO_LARGE : {
-            perr("ERRORE: Il file %s è troppo grande\n"
-                            "Codice: SFILE_TOO_LARGE\n\n", file);
-            break;
-        }
-
-        case SFILE_OPENED : {
-            printf(YEL "WARNING: Tentata operazione (forse di cancellazione ?) su file aperto.\n"
-                   "E' obbligatorio prima chiuderlo, per questioni si sicurezza.\n"
-                   "Codice: SFILE_OPENED\n\n");
+            perr("ERRORE: file %s is too large\n"
+                            "Errcode: SFILE_TOO_LARGE\n\n", file);
             break;
         }
 
         case CONNECTION_TIMED_OUT : {
-            perr("ERRORE: Impossibile stabilire una connessione con il Server\n"
-                            "Codice: CONNECTION_TIMED_OUT\n\n");
+            perr("ERRORE: unable to connect to the server\n"
+                            "Errcode: CONNECTION_TIMED_OUT\n\n");
             break;
         }
 
         case WRONG_SOCKET : {
-            perr("ERRORE: Il Socket passato come argomento non corrisponde al Socket\n"
-                            "con cui questo Client si è connesso\n"
-                            "Codice: WRONG_SOCKET\n\n");
+            perr("ERRORE: socket passed as argument is not the same which the client is connected to\n"
+                            "Errcode: WRONG_SOCKET\n\n");
             break;
         }
 
         case FILE_NOT_FOUND : {
-            perr("ERRORE: File %s non trovato\n"
-                            "Codice: FILE_NOT_FOUND\n\n", file);
+            perr("ERRORE: file %s not found\n"
+                            "Errcode: FILE_NOT_FOUND\n\n", file);
             break;
         }
 
         case INVALID_ARG : {
-            perr("ERRORE: Argomento passato non valido\n"
-                            "Codice: INVALID_ARG\n\n");
+            perr("ERRORE: invalid argument\n"
+                            "Errcode: INVALID_ARG\n\n");
             break;
         }
 
         case S_FREE_ERROR : {
-            perr("ERRORE: Impossibile fare spazio sul Server\n"
-                            "Prova a chiudere qualche file\n"
-                            "Codice: S_FREE_ERROR\n\n");
+            perr("ERRORE: unable to free storage on the server\n"
+                            "Errcode: S_FREE_ERROR\n\n");
             break;
         }
 
         case CONNECTION_REFUSED : {
-            perr("ERRORE: Impossibile stabilire una connessione con il Server.\n"
-                            "Codice: CONNECTION_REFUSED\n\n");
+            perr("ERRORE: unable to connect to the server\n"
+                            "Errcode: CONNECTION_REFUSED\n\n");
             break;
         }
         case MALLOC_ERROR : {
-            perr("ERRORE: Una malloc sul Server non è andata a buon fine\n"
-                 "Prova a cancellare qualche file e riprova\n"
-                 "Codice: MALLOC_ERROR\n\n");
+            perr("ERRORE: malloc failed, try to remove some files\n"
+                 "Errcode: MALLOC_ERROR\n\n");
+            break;
+        }
+
+        case SFILE_LOCKED : {
+            perr("ERROR: operation not permitted on locked file %s\n"
+                            "Errcode: SFILE_ALREADY_EXIST\n\n", file);
             break;
         }
 

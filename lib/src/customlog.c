@@ -5,14 +5,19 @@
 #include <stddef.h>
 #include <stdbool.h>
 #include <pthread.h>
-#include <unistd.h>
 #include <sys/sysinfo.h>
 #include <sys/time.h>
 #include <string.h>
+#include <unistd.h>
+#include <sys/syscall.h>
 #include "../customlog.h"
 #include "../customstring.h"
 
-#define BUFSIZE 300
+#ifndef SYS_gettid
+#error "SYS_gettid unavailable on this system"
+#endif
+
+#define gettid() ((pid_t)syscall(SYS_gettid))
 
 logfile* log_init(char *logsdir){
   char *path = generate_logpath(logsdir);
@@ -44,7 +49,7 @@ char *generate_logpath(char *logsdir){
 
   snprintf(
       log_file_path, dir_path_len + 30,
-      "%s%4d-%02d-%02d|%02d:%02d:%02d.log",
+      "%s%4d-%02d-%02d|%02d:%02d:%02d.txt",
       logsdir,
       curr_time.tm_year + 1900,
       curr_time.tm_mon + 1,
@@ -76,149 +81,142 @@ void log_addreadablerequest(logfile *lf, char *operation, char *cpid, int fd_c){
 }
 
 void log_addrequest(logfile *lf, char *request){
-  char *t = str_long_toStr(gettid());
   char *s = malloc(BUFSIZE*sizeof(char));
-  snprintf(s, BUFSIZE, "Worker %s received a new request: %s", t, request);
+  snprintf(s, BUFSIZE, "Worker %d received a new request: %s", gettid(), request);
   log_addline(lf, s);
-  free(t);
   free(s);
 }
 
 void log_addcloseconnection(logfile *lf, char *cpid){
-  char *s = str_concatn("Client ", cpid, " disconnected", NULL);
+  char *s = malloc(BUFSIZE*sizeof(char));
+  snprintf(s, BUFSIZE, "Client %s disconnected", cpid);
   log_addline(lf, s);
   free(s);
 }
 
 void log_addread(logfile *lf, char *cpid, char *pathname, size_t size){
-  char *t = str_long_toStr(gettid());
   char *s = malloc(BUFSIZE*sizeof(char));
-  snprintf(s, BUFSIZE, "Worker %s: Client %s has read file %s of size [%ld]", t, cpid, pathname, size);
+  snprintf(s, BUFSIZE, "Worker %d: Client %s has read file %s of size [%ld]", gettid(), cpid, pathname, size);
   log_addline(lf, s);
-  free(t);
   free(s);
 }
 
-void log_addwrite(logfile *lf, char *cpid, char *pathname, size_t size){
-  char *t = str_long_toStr(gettid());
+void log_addwrite(logfile *lf, char *cpid, char *pathname, size_t size, int opened_files){
   char *s = malloc(BUFSIZE*sizeof(char));
-  snprintf(s, BUFSIZE, "Worker %s: Client %s has written file %s of size [%ld]", t, cpid, pathname, size);
+  snprintf(s, BUFSIZE, "Worker %d: Client %s has written file %s of size [%ld]", gettid(), cpid, pathname, size);
   log_addline(lf, s);
-  free(t);
+  if(opened_files == 1) snprintf(s, BUFSIZE, "Client %s has 1 file opened", cpid);
+  else snprintf(s, BUFSIZE, "Client %s has %d files opened", cpid, opened_files);
+  log_addline(lf, s);
   free(s);
 }
 
 void log_addappend(logfile *lf, char *cpid, char *pathname, size_t size){
-  char *t = str_long_toStr(gettid());
   char *s = malloc(BUFSIZE*sizeof(char));
-  snprintf(s, BUFSIZE, "Worker %s: Client %s has appended to file %s a file of size [%ld]", t, cpid, pathname, size);
+  snprintf(s, BUFSIZE, "Worker %d: Client %s has appended to file %s a file of size [%ld]", gettid(), cpid, pathname, size);
   log_addline(lf, s);
-  free(t);
   free(s);
 }
 
 void log_addcreate(logfile *lf, char *cpid, char *pathname){
-  char *t = str_long_toStr(gettid());
-  char *s = str_concatn("Worker ", t, ": Client ", cpid, " has created file ", pathname, NULL);
+  char *s = malloc(BUFSIZE*sizeof(char));
+  snprintf(s, BUFSIZE, "Worker %d: Client %s has created file %s", gettid(), cpid, pathname);
   log_addline(lf, s);
-  free(t);
   free(s);
 }
 
-void log_addopen(logfile *lf, char *cpid, char *pathname){
-  char *t = str_long_toStr(gettid());
-  char *s = str_concatn("Worker ", t, ": Client ", cpid, " has opened file ", pathname, NULL);
+void log_addopen(logfile *lf, char *cpid, char *pathname, int opened_files){
+
+  char *s = malloc(BUFSIZE*sizeof(char));
+  snprintf(s, BUFSIZE, "Worker %d: Client %s has opened file %s", gettid(), cpid, pathname);
   log_addline(lf, s);
-  free(t);
+  if(opened_files == 1) snprintf(s, BUFSIZE, "Client %s has 1 file opened", cpid);
+  else snprintf(s, BUFSIZE, "Client %s has %d files opened", cpid, opened_files);
+  log_addline(lf, s);
   free(s);
+
 }
 
 void log_addcreatelock(logfile *lf, char *cpid, char *pathname){
-  char *t = str_long_toStr(gettid());
-  char *s = str_concatn("Worker ", t, ": Client ", cpid, " has created with lock file", pathname, NULL);
+  char *s = malloc(BUFSIZE*sizeof(char));
+  snprintf(s, BUFSIZE, "Worker %d: Client %s has created with lock file %s", gettid(), cpid, pathname);
   log_addline(lf, s);
-  free(t);
   free(s);
 }
 
-void log_addopenlock(logfile *lf, char *cpid, char *pathname){
-  char *t = str_long_toStr(gettid());
-  char *s = str_concatn("Worker ", t, ": Client ", cpid, " has opened with lock file ", pathname, NULL);
+void log_addopenlock(logfile *lf, char *cpid, char *pathname, int opened_files){
+  char *s = malloc(BUFSIZE*sizeof(char));
+  snprintf(s, BUFSIZE, "Worker %d: Client %s has opened with lock file %s", gettid(), cpid, pathname);
   log_addline(lf, s);
-  free(t);
+  if(opened_files == 1)snprintf(s, BUFSIZE, "Client %s has 1 file opened", cpid);
+  else snprintf(s, BUFSIZE, "Client %s has %d files opened", cpid, opened_files);
+  log_addline(lf, s);
   free(s);
 }
 
 void log_addeject(logfile *lf, char *cpid, char *pathname, size_t size){
-  char *t = str_long_toStr(gettid());
   char *s = malloc(BUFSIZE*sizeof(char));
-  snprintf(s, BUFSIZE, "Worker %s: Client %s ejected file %s of size [%ld]", t, cpid, pathname, size);
+  snprintf(s, BUFSIZE, "Worker %d: Client %s ejected file %s of size [%ld]", gettid(), cpid, pathname, size);
   log_addline(lf, s);
-  free(t);
   free(s);
 }
 
 void log_addremove(logfile *lf, char *cpid, char *pathname, size_t size){
-  char *t = str_long_toStr(gettid());
   char *s = malloc(BUFSIZE*sizeof(char));
-  snprintf(s, BUFSIZE, "Worker %s: Client %s removed file %s of size [%ld]", t, cpid, pathname, size);
+  snprintf(s, BUFSIZE, "Worker %d: Client %s removed file %s of size [%ld]", gettid(), cpid, pathname, size);
   log_addline(lf, s);
   free(s);
-  free(t);
 }
 
-void log_addclose(logfile *lf, char *cpid, char *pathname){
-  char *t = str_long_toStr(gettid());
-  char *s = str_concatn("Worker ", t, ": Client ", cpid, " closed file ", pathname, NULL);
+void log_addclose(logfile *lf, char *cpid, char *pathname, int opened_files){
+  char *s = malloc(BUFSIZE * sizeof(char));
+  snprintf(s, BUFSIZE, "Worker %d: Client %s closed file %s", gettid(), cpid, pathname);
   log_addline(lf, s);
-  free(t);
+  if(opened_files == 1)snprintf(s, BUFSIZE, "Client %s has 1 file opened", cpid);
+  else snprintf(s, BUFSIZE, "Client %s has %d files opened", cpid, opened_files);
+  log_addline(lf, s);
   free(s);
 }
 
 void log_addunlock(logfile *lf, char *cpid, char *pathname){
-  char *t = str_long_toStr(gettid());
-  char *s = str_concatn("Worker ", t, ": Client ", cpid, " unlocked file ", pathname, NULL);
+  char *s = malloc(BUFSIZE * sizeof(char));
+  snprintf(s, BUFSIZE, "Worker %d: Client %s unlocked file %s", gettid(), cpid, pathname);
   log_addline(lf, s);
-  free(t);
   free(s);
 }
 
 void log_addlock(logfile *lf, char *cpid, char *pathname){
-  char *t = str_long_toStr(gettid());
-  char *s = str_concatn("Worker ", t, ": Client ", cpid, " locked file ", pathname, NULL);
+  char *s = malloc(BUFSIZE * sizeof(char));
+  snprintf(s, BUFSIZE, "Worker %d: Client %s locked file %s", gettid(), cpid, pathname);
   log_addline(lf, s);
-  free(t);
   free(s);
 }
 
 void log_adderror(logfile *lf, char *cpid, char *msg){
-  char *t = str_long_toStr(gettid());
-  char *s = str_concatn("Worker ", t, ": Error with client ", cpid, ": ", msg, NULL);
+  char *s = malloc(BUFSIZE * sizeof(char));
+  snprintf(s, BUFSIZE, "Worker %d: Error with client %s: %s", gettid(), cpid, msg);
   log_addline(lf, s);
-  free(t);
   free(s);
 }
 
 void log_addStats(logfile *lf, size_t msds, size_t msf, int mcc){
   log_addline(lf, "\nSTATISTICS:");
 
-  char *n = str_long_toStr(msds);
-  char *s = str_concatn("Max stored data size (MB): ", n, "", NULL);
+  char *s = malloc(BUFSIZE * sizeof(char));
+  snprintf(s, BUFSIZE, "Max stored data size (MB): %ld", msds);
   log_addline(lf, s);
-  free(n);
   free(s);
 
-  n = str_long_toStr(msf);
-  s = str_concatn("Max number of files stored: ", n, NULL);
+  s = malloc(BUFSIZE * sizeof(char));
+  snprintf(s, BUFSIZE, "Max number of files stored: %ld", msf);
   log_addline(lf, s);
-  free(n);
   free(s);
 
-  n = str_long_toStr(mcc);
-  s = str_concatn("Max connected clients: ", n, NULL);
+  s = malloc(BUFSIZE * sizeof(char));
+  snprintf(s, BUFSIZE, "Max connected clients: %d", mcc);
   log_addline(lf, s);
-  free(n);
   free(s);
+
 }
 
 void log_free(logfile *lf){

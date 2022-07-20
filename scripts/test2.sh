@@ -1,6 +1,7 @@
 #!/bin/bash
 
-sleep 3
+sleep 2
+
 realpath=$(realpath ./)
 folder1="${realpath}/test/folder1/"
 folder2="${realpath}/test/folder2/"
@@ -10,19 +11,19 @@ socket="tmp/serversock.sk"
 
 k=0
 
-./out/client -t200 -f${socket} -p -D${backup} -w${folder1}cani , -w${folder2}
+./out/client -t100 -f${socket} -p -D${backup} -w${folder1}cani , -w${folder2}
 PID[k]=$!
 ((k++))
 
-./out/client -t200 -f${socket} -p -D${backup} -L -w${folder1}molti_file
+./out/client -t100 -f${socket} -p -D${backup} -L -w${folder1}molti_file
 PID[k]=$!
 ((k++))
 
-./out/client -t200 -f${socket} -p -D${backup} -w${folder1}vari , -w${folder1}cibo
+./out/client -t100 -f${socket} -p -D${backup} -w${folder1}vari , -w${folder1}cibo
 PID[k]=$!
 ((k++))
 
-./out/client -t200 -f${socket} -p -L -D${backup} -d${download}    \
+./out/client -t100 -f${socket} -p -L -D${backup} -d${download}    \
 -W${folder1}cibo/cibo_3.png ,                                     \
 -a${folder1}cibo/cibo_3.png,${folder2}1.txt ,                     \
 -a${folder1}cibo/cibo_3.png,${folder2}2.txt ,                     \

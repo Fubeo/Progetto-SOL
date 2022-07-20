@@ -58,7 +58,7 @@ int main(int argc, char *argv[]){
 
   if (closeConnection(sockfilename) != 0) {
     errcode = errno;
-    pcode(errcode, NULL);
+    if(print_all) pcode(errcode, NULL);
   }
 }
 
@@ -93,7 +93,7 @@ char *check_options(int argc, char *argv[]){
       found_rename = true;
       sockfilename = ((argv[i]) += 2);
       if (openConnection(sockfilename, 0, timespec_new()) != 0) {
-        pcode(errno, NULL);
+        if(print_all) pcode(errno, NULL);
         exit(errno);
       }
 
@@ -116,7 +116,7 @@ char *check_options(int argc, char *argv[]){
   }
 
   if (!found_rename) {
-      perr( "Opzione Socket -f[sockfilename] non specificata\n");
+      perr( "Socket option -f[sockfilename] not specified\n");
       perr( "Inserire il Server a cui connettersi\n");
       return NULL;
   }
@@ -133,7 +133,6 @@ char *check_options(int argc, char *argv[]){
 void execute_options(int argc, char *argv[]){
   int opt, errcode;
   while ((opt = getopt(argc, argv, ":h:W:w:R::r:c:l:u:a:o:C:")) != -1) {
-    fprintf(stdout, "%d: NUOVA OPT %c\n", getpid(), opt);
 
     switch (opt) {
       case 'h': {
@@ -146,12 +145,9 @@ void execute_options(int argc, char *argv[]){
         int n = str_split(&files, optarg, ",");
         for (int i = 0; i < n; i++) {
           char *s = realpath(files[i], NULL);
-          if(errno == ENOENT){
-            perr( "WriteFile: file %s does not exist\n", files[i]);
-          } else {
-            send_file_to_server(backup_folder, files[i]);
-            usleep(sleep_between_requests * 1000);
-          }
+          send_file_to_server(backup_folder, files[i]);
+          usleep(sleep_between_requests * 1000);
+          
           free(s);
         }
         break;
@@ -167,7 +163,7 @@ void execute_options(int argc, char *argv[]){
 
 
         if (n > 2) {
-          perr("Troppi argomenti per il comando -w dirname[,n=x]\n");
+          perr("Too many arguments for command -w dirname[,n=x]\n");
           break;
         }
 
@@ -194,8 +190,8 @@ void execute_options(int argc, char *argv[]){
         for (int i = 0; i < n; i++) {
           if (openFile(files[i], O_OPEN) != 0) {
             errcode = errno;
-            pcode(errcode, files[i]);
-            perr( "OpenFile: error occurred on file %s\n", files[i]);
+            if(print_all) pcode(errcode, files[i]);
+            if(print_all) perr( "OpenFile: error occurred on file %s\n", files[i]);
           } else if(print_all){
             if(print_all) psucc("File %s successfully opened\n", files[i]);
           }
@@ -209,18 +205,17 @@ void execute_options(int argc, char *argv[]){
           int n = 0;
           if (optarg != NULL) {
               if (str_toInteger(&n, optarg) != 0) {
-                  perr("%s is not a number\n", optarg);
+                  if(print_all) perr("%s is not a number\n", optarg);
                   break;
               }
           }
           if (readNFiles(n, download_folder) != 0) {
               errcode = errno;
-              pcode(errcode, NULL);
+              if(print_all) pcode(errcode, NULL);
           } else if(print_all){
               if(n == 0)
-              psucc("Files successfully read\n");
+              if(print_all) psucc("Files successfully read\n");
           }
-          fprintf(stdout, "%d: FINITO READN\n", getpid());
 
           break;
       }
@@ -233,9 +228,9 @@ void execute_options(int argc, char *argv[]){
           for (int i = 0; i < n; i++) {
               if(openFile(files[i], O_OPEN) == 0) { // Apertura del file
                   if (readFile(files[i], &buff, &size) != 0) {    // Lettura del file
-                      perr("ReadFile: Error on file %s\n", files[i]);
+                      if(print_all) perr("ReadFile: Error on file %s\n", files[i]);
                       errcode = errno;
-                      pcode(errcode, files[i]);
+                      if(print_all) pcode(errcode, files[i]);
                   } else {    // a questo punto o salvo i file nella cartella dirname (se diversa da NULL) o invio un messaggio di conferma
                       char *filename = strrchr(files[i], '/') + 1;
                       if (download_folder != NULL) {
@@ -245,15 +240,15 @@ void execute_options(int argc, char *argv[]){
                           char *path = str_concatn(download_folder, filename, NULL);
                           FILE *file = fopen(path, "wb");
                           if (file == NULL) {
-                              perr("Cartella %s sbagliata\n", path);
+                              if(print_all) perr("Wrong folder %s\n", path);
                               download_folder = NULL;
                           } else {
                               if (fwrite(buff, sizeof(char), size, file) == 0) {  // scrivo il file ricevuto nella cartella download_folder
-                                  perr("Errore nella scrittura di %s\n"
-                                       "I successivi file verranno ignorati\n", path);
+                                  perr("Error writing %s\n"
+                                       "Next files will be ignored\n", path);
                                   download_folder = NULL;
                               } else if (print_all) {
-                                  pcolor(GREEN, "File \"%s\" scritto nella cartella: ", filename);
+                                  if(print_all) pcolor(GREEN, "File \"%s\" written into folder: ", filename);
                                   printf("%s\n\n", path);
                               }
                               fclose(file);
@@ -266,9 +261,9 @@ void execute_options(int argc, char *argv[]){
                       free(buff);
                 }
             }else{
-                perr("openFile: Errore nell apertura del file %s\n", files[i]);
+                if(print_all) perr("openFile: Errore nell apertura del file %s\n", files[i]);
                 errcode = errno;
-                pcode(errcode, files[i]);
+                if(print_all) pcode(errcode, files[i]);
               }
             usleep(sleep_between_requests * 1000);
           }
@@ -283,8 +278,8 @@ void execute_options(int argc, char *argv[]){
         for (int i = 0; i < n; i++) {
           if (removeFile(files[i]) != 0) {
             errcode = errno;
-            pcode(errcode, files[i]);
-            perr( "RemoveFile: error occurred on file %s\n", files[i]);
+            if(print_all) pcode(errcode, files[i]);
+            if(print_all) perr( "RemoveFile: error occurred on file %s\n", files[i]);
           } else if(print_all){
             psucc("File %s successfully removed\n", files[i]);
           }
@@ -314,8 +309,8 @@ void execute_options(int argc, char *argv[]){
 
         if (appendToFile(files[0], file_content, file_size, backup_folder)!= 0) {
           errcode = errno;
-          pcode(errcode, files[1]);
-          perr( "AppendFile: error occurred while appending %s to %s\n", (strrchr(files[1],'/')+1), (strrchr(files[0],'/')+1));
+          if(print_all) pcode(errcode, files[1]);
+          if(print_all) perr( "AppendFile: error occurred while appending %s to %s\n", (strrchr(files[1],'/')+1), (strrchr(files[0],'/')+1));
         } else if(print_all){
           psucc("File %s successfully appended\n", optarg);
         }
@@ -330,7 +325,7 @@ void execute_options(int argc, char *argv[]){
         for (int i = 0; i < n; i++) {
           char* rp = realpath(files[i], NULL);
           if(errno == ENOENT){
-            perr( "LockFile: file %s does not exist\n", files[i]);
+            if(print_all) perr( "LockFile: file %s does not exist\n", files[i]);
           } else {
             lockFile(files[i]);
             usleep(sleep_between_requests * 1000);
@@ -347,7 +342,7 @@ void execute_options(int argc, char *argv[]){
         for (int i = 0; i < n; i++) {
           files[i] = realpath(files[i], NULL);
           if(errno == ENOENT){
-            perr( "UnlockFile: file %s does not exist\n", optarg);
+            if(print_all) perr( "UnlockFile: file %s does not exist\n", optarg);
           } else {
             unlockFile(files[i]);
             usleep(sleep_between_requests * 1000);
@@ -363,7 +358,7 @@ void execute_options(int argc, char *argv[]){
         for (int i = 0; i < n; i++) {
           files[i] = realpath(files[i], NULL);
           if(errno == ENOENT){
-            perr( "CloseFile: file %s does not exist\n", files[i]);
+            if(print_all) perr( "CloseFile: file %s does not exist\n", files[i]);
           } else {
             closeFile(files[i]);
             usleep(sleep_between_requests * 1000);
@@ -378,7 +373,6 @@ void execute_options(int argc, char *argv[]){
       }
     }
   }
-    fprintf(stdout, "%d: FINITO READN\n", getpid());
 
 }
 
@@ -392,13 +386,14 @@ void send_file_to_server(const char *backup_folder, char *file) {
 
     extern bool o_lock_exists;
     if (openFile(f, o) != 0) {
-        if(o == O_LOCK)
-          if(!o_lock_exists) fprintf(stderr, "OpenLock: error creating file %s\n", file);
-          else fprintf(stderr, "OpenLock: error opening file %s\n", file);
-        else fprintf(stderr, "CreateFile: error creating file %s\n", file);
-        errcode = errno;
-        pcode(errcode, file);
-        free(f);
+	if(print_all){
+          if(o == O_LOCK)
+            if(!o_lock_exists) fprintf(stderr, "OpenLock: error creating file %s\n", file);
+            else fprintf(stderr, "OpenLock: error opening file %s\n", file);
+          else fprintf(stderr, "CreateFile: error creating file %s\n", file);
+	}        
+	errcode = errno;
+        if(print_all) pcode(errcode, file);
         return;
     }
     if((o == O_LOCK && !o_lock_exists) || o == O_CREATE){
@@ -406,7 +401,7 @@ void send_file_to_server(const char *backup_folder, char *file) {
           if(print_all) pcolor(CYAN, "Sending file %s%s\n", "\x1B[0m", file);
           fprintf(stderr, "Writefile: error sending file %s\n", file);
           errcode = errno;
-          pcode(errcode, f);
+          if(print_all) pcode(errcode, f);
       } else if(print_all){
           psucc("File \"%s\" successfully sent\n", strrchr(file, '/') + 1);
       }

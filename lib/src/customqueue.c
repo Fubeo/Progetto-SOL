@@ -8,6 +8,8 @@
 
 #include "../customqueue.h"
 pthread_mutex_t queue_lock = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t queue_cond=PTHREAD_COND_INITIALIZER;
+static bool queue_closed=false;
 
 queue *queue_create() {
     queue *q = malloc(sizeof(queue));
@@ -45,18 +47,16 @@ void queue_insert_tail (queue_node **tail, int value) {
     (*tail)->next = element;
     *tail = element;
 }
-pthread_cond_t queue_cond=PTHREAD_COND_INITIALIZER;
-static bool queue_closed=false;
+
 
 void queue_close(queue **q){
     queue_closed=true;
     pthread_cond_broadcast(&queue_cond);
 }
 
-int queue_get(queue **q) {
+int queue_get(queue **q){
 
     pthread_mutex_lock(&queue_lock);
-
     while(queue_isEmpty(*q) && !queue_closed){
         pthread_cond_wait(&queue_cond, &queue_lock);
     }
@@ -105,14 +105,18 @@ void queue_insert(queue **q, int value) {
         queue_insert_tail(&(*q)->tail, value);
     }
 
-    pthread_cond_signal(&queue_cond);
     pthread_mutex_unlock(&queue_lock);
+    pthread_cond_signal(&queue_cond);
 }
 
 void queue_destroy(queue **q){
     while (!queue_isEmpty((*q))){
         int c = queue_get(q);
-        close(c);
+        if(c != -1) {
+		close(c);
+		fprintf(stdout, "trovo -1");	
+	}	
+        else break;
     }
 
     free(*q);

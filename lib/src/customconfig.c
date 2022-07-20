@@ -143,21 +143,21 @@ void settings_free(settings *s) {
 }
 
 void settings_print(settings s) {
-    fprintf(stdout, "MAX_STORABLE_FILES:\t\t\t\t\t");
+    pcolor(YELLOW, "MAX_STORABLE_FILES\t\t\t\t\t");
     printf("%u\n", s.MAX_STORABLE_FILES);
 
-    fprintf(stdout, "MAX_STORAGE (in bytes):\t\t\t\t\t");
+    pcolor(YELLOW, "MAX_STORAGE (in bytes)\t\t\t\t\t");
     printf("%lu\n", s.MAX_STORAGE);
 
-    fprintf(stdout, "N_WORKERS:\t\t\t\t\t\t");
+    pcolor(YELLOW, "N_WORKERS\t\t\t\t\t\t");
     printf("%u\n", s.N_WORKERS);
 
-    fprintf(stdout, "SOCK_PATH:\t\t\t\t\t\t");
+    pcolor(YELLOW, "SOCK_PATH\t\t\t\t\t\t");
     printf("%s\n", s.SOCK_PATH);
 
-    fprintf(stdout, "PRINT_LOG:\t\t\t\t\t\t");
+    pcolor(YELLOW, "PRINT_LOG\t\t\t\t\t\t");
     printf("%d\n", s.PRINT_LOG);
 
-    fprintf(stdout, "LOG_PATH:\t\t\t\t\t\t");
+    pcolor(YELLOW, "LOG_PATH\t\t\t\t\t\t");
     printf("%s\n", s.LOGS_PATH);
 }

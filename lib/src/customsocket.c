@@ -1,6 +1,14 @@
 #define _GNU_SOURCE
+#include <unistd.h>
+#include <sys/syscall.h>
 #include "../customsocket.h"
 #include "../customfile.h"
+
+#ifndef SYS_gettid
+#error "SYS_gettid unavailable on this system"
+#endif
+
+#define gettid() ((pid_t)syscall(SYS_gettid))
 
 int server_unix_socket(char *sockpath) {
     int fd_sk_server = socket(AF_UNIX, SOCK_STREAM, 0);

@@ -127,7 +127,9 @@ int str_splitn(char ***output, const char *s, const char *delimiter, int n) {
     int count = MAX;
     char *backup = str_create(s);
 
-    char *token = strtok(backup, delimiter);
+    char *appo;
+
+    char *token = strtok_r(backup, delimiter, &appo);
     while (token != NULL) {
         if(n>=0)
             n--;
@@ -152,8 +154,9 @@ int str_splitn(char ***output, const char *s, const char *delimiter, int n) {
             (*output)[i] = str_create(token);
             i++;
 
+            //s = NULL;
             //metto il resto della stringa alla posizione successiva
-            token = strtok(NULL, "");
+            token = strtok_r(NULL, "", &appo);
             if (token != NULL) {
                 (*output)[i] = str_create(token);
                 i++;
@@ -164,7 +167,8 @@ int str_splitn(char ***output, const char *s, const char *delimiter, int n) {
 
         (*output)[i] = str_create(token);
 
-        token = strtok(NULL, delimiter);
+        //s = NULL;
+        token = strtok_r(NULL, delimiter, &appo);
         i++;
     }
 

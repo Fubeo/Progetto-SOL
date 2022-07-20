@@ -1,10 +1,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <errno.h>
+#include <string.h>
 #include "../customstring.h"
 #include "../customlist.h"
 
-list *list_create() {
+list *list_create(){
     list* l = malloc(sizeof(list));
     if(l==NULL){
         fprintf(stderr, "Unable to create a list, malloc error\n");
@@ -17,7 +18,7 @@ list *list_create() {
     return l;
 }
 
-void insert_head (list_node **head, char* key, void *value) {
+void insert_head (list_node **head, char* key, void *value){
     list_node *element = (list_node *) malloc(sizeof(list_node));
     if(element==NULL){
         fprintf(stderr, "list malloc error: impossibile creare un nuovo nodo\n");
@@ -30,7 +31,7 @@ void insert_head (list_node **head, char* key, void *value) {
     *head = element;
 }
 
-void insert_tail (list_node **tail, char* key, void *value) {
+void insert_tail (list_node **tail, char* key, void *value){
     list_node *element = (list_node *) malloc(sizeof(list_node));
     if(element==NULL){
         fprintf(stderr, "list malloc error: impossibile creare un nuovo nodo\n");
@@ -44,15 +45,13 @@ void insert_tail (list_node **tail, char* key, void *value) {
     *tail = element;
 }
 
-bool list_remove(list **l, char* key, void (*delete_value)(void* value))
-{
+bool list_remove(list **l, char* key, void (*delete_value)(void* value)){
     list_node** head=&(*l)->head;
 
     list_node *curr = *head;
     list_node *succ = (*head)->next;
 
-    if (str_equals(curr->key, key))
-    {
+    if (str_equals(curr->key, key)){
         *head = curr->next;
         free(curr->key);
         if(delete_value != NULL)
@@ -70,8 +69,7 @@ bool list_remove(list **l, char* key, void (*delete_value)(void* value))
         return false;
     }
 
-    while (!str_equals(succ->key, key) && curr != NULL)
-    {
+    while (!str_equals(succ->key, key) && curr != NULL) {
         curr = curr->next;
         succ = succ->next;
         if(succ == NULL)
@@ -122,7 +120,8 @@ void list_destroy(list** l, void (*delete_value)(void* value)){
 }
 
 void list_insert(list **l, char* key, void *value) {
-    char* dup_key= str_create(key);
+    char* dup_key = malloc(sizeof(char) * strlen(key) + 1);
+    strcpy(dup_key, key);
 
     if ((*l)->head == NULL) {
         insert_head(&(*l)->head, dup_key, value);

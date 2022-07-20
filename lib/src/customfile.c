@@ -85,19 +85,16 @@ int file_nscanAllDir(char*** output, char* init_dir, int *left_to_read, int *arr
       else file_name = str_concatn(init_dir,"/",file_name,NULL);
 
       char* filepath = realpath(file_name,NULL);
-      if(errno == ENOENT) {
-        printf("File %s not found\n", file_name);
-      } else {
-        assert(filepath != NULL);
+     
+      assert(filepath != NULL);
 
-        if(!is_directory(filepath)) {
-          (*output)[*current_length] = filepath;
-          (*current_length)++;
-          (*left_to_read)--;
-          free(file_name);
-        } else {
-          file_nscanAllDir(output, filepath, left_to_read, array_size, current_length);
-        }
+      if(!is_directory(filepath)) {
+         (*output)[*current_length] = filepath;
+         (*current_length)++;
+         (*left_to_read)--;
+         free(file_name);
+      } else {
+         file_nscanAllDir(output, filepath, left_to_read, array_size, current_length);
       }
     }
   }
